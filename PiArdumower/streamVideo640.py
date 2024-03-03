@@ -1,41 +1,40 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
+
+# This is the same as mjpeg_server.py, but uses the h/w MJPEG encoder.
 
 import io
-import picamera
 import logging
 import socketserver
-from threading import Condition
 from http import server
-from config import myCamAngle
+from threading import Condition
+from libcamera import controls
+from picamera2 import Picamera2
+from picamera2.encoders import MJPEGEncoder
+from picamera2.outputs import FileOutput
 
-PAGE="""\
+PAGE = """\
 <html>
 <head>
-<title>picamera MJPEG streaming demo</title>
+<title>picamera2 MJPEG streaming demo</title>
 </head>
 <body>
-<h1></h1>
+<h1>Picamera2 MJPEG Streaming Demo</h1>
 <img src="stream.mjpg" width="640" height="480" />
 </body>
 </html>
 """
 
-class StreamingOutput(object):
+
+class StreamingOutput(io.BufferedIOBase):
     def __init__(self):
         self.frame = None
-        self.buffer = io.BytesIO()
         self.condition = Condition()
 
     def write(self, buf):
-        if buf.startswith(b'\xff\xd8'):
-            # New frame, copy the existing buffer's content and notify all
-            # clients it's available
-            self.buffer.truncate()
-            with self.condition:
-                self.frame = self.buffer.getvalue()
-                self.condition.notify_all()
-            self.buffer.seek(0)
-        return self.buffer.write(buf)
+        with self.condition:
+            self.frame = buf
+            self.condition.notify_all()
+
 
 class StreamingHandler(server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -43,7 +42,6 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_response(301)
             self.send_header('Location', '/index.html')
             self.end_headers()
-        
         elif self.path == '/index.html':
             content = PAGE.encode('utf-8')
             self.send_response(200)
@@ -51,7 +49,6 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
             self.send_header('Content-Length', len(content))
             self.end_headers()
             self.wfile.write(content)
-        
         elif self.path == '/stream.mjpg':
             self.send_response(200)
             self.send_header('Age', 0)
@@ -71,22 +68,28 @@ class StreamingHandler(server.BaseHTTPRequestHandler):
                     self.wfile.write(frame)
                     self.wfile.write(b'\r\n')
             except Exception as e:
-                logging.warning('The PC client close session %s: %s',self.client_address, str(e))
+                logging.warning(
+                    'Removed streaming client %s: %s',
+                    self.client_address, str(e))
         else:
             self.send_error(404)
             self.end_headers()
+
 
 class StreamingServer(socketserver.ThreadingMixIn, server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-with picamera.PiCamera(resolution='640x480', framerate=10) as camera:
-    output = StreamingOutput()
-    camera.rotation = myCamAngle
-    camera.start_recording(output, format='mjpeg')
-    try:
-        address = ('', 8000)
-        server = StreamingServer(address, StreamingHandler)
-        server.serve_forever()
-    finally:
-        camera.stop_recording()
+frame_rate = 5
+picam2 = Picamera2()
+picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+picam2.set_controls({"FrameRate": frame_rate})
+output = StreamingOutput()
+picam2.start_recording(MJPEGEncoder(), FileOutput(output))
+
+try:
+    address = ('', 8000)
+    server = StreamingServer(address, StreamingHandler)
+    server.serve_forever()
+finally:
+    picam2.stop_recording()

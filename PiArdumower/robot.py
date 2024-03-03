@@ -52,6 +52,8 @@ class robot:
         self.motorMowForceOff=0
         self.motorMowSpeedMaxPwm=0
         self.motorMowPowerMax=0
+        self.motorMowfaultcurrent=0
+        self.motorMowOverloadCurrent=0
         self.motorMowRPMSet=0
         self.motorMowSenseScale=0
         self.motorMowPID_Kp=0

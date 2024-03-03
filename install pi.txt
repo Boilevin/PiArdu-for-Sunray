@@ -1,0 +1,6 @@
+https://github.com/Qengineering/RPi-Bullseye-DNN-image
+
+
+sudo pip3 install matplotlib
+sudo apt-get install python3-pil.imagetk
+sudo pip3 install shapely
