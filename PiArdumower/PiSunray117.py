@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "111"
+PiVersion = "117"
 from pathlib import Path
 import traceback
 import sys
@@ -14,6 +14,14 @@ import datetime as dt
 # import csv
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backend_bases import MouseButton
+#import matplotlib as mpl
+#mpl.rcParams["keymap.pan"]='p'
+
+#from mpl_point_clicker import clicker
+from mpl_interactions import zoom_factory, panhandler
+
+
 from shapely import geometry
 from shapely.geometry import Polygon
 #     from shapely import union as PolygonUnion
@@ -678,6 +686,7 @@ def checkSerial():  # the main loop is here
 
 
 def updateAutoPage():
+    
     if (mymower.targetPointx != mymower.lasttargetPointx):
         targetpos1 = [mymower.statex, mymower.targetPointx]
         targetpos2 = [mymower.statey, mymower.targetPointy]
@@ -691,7 +700,7 @@ def updateAutoPage():
 
     axLiveMap.plot(mowerpos1, mowerpos2, color='g', linewidth=2)
     # axLiveMap.scatter(mymower.statex,mymower.statey, color='g', s=10)
-    axLiveMap.autoscale(False)
+    #axLiveMap.autoscale(False)
     canvasLiveMap.draw()
 
 
@@ -1365,6 +1374,7 @@ def ButtonCamera_click():
 
 def ButtonMaps_click():
     mymower.focusOnPage = 9
+
     MapsPage.tkraise()
     MapsPage.select(0)
     # MapsPage.select(mymower.mapSelected)
@@ -2158,13 +2168,32 @@ ButtonVisionSave.place(x=530, y=210, height=60, width=140)
 rebuild_treeVisionview()
 
 """ THE AUTO PAGE ***************************************************"""
+from matplotlib.artist import Artist
+# def onPickPoint(event):
+#     ind = event.ind
+#     print('onpickPoint scatter:', ind )
+    
 
+selectedPoint = None
+ 
+def onPickPoint(event):
+    global selectedPoint
+    
+    line = event.artist
+    xdata, ydata = line.get_data()
+    ind = event.ind
+    print('on pick line: ',ind," " , np.array([xdata[ind], ydata[ind]]))
+    selectedPoint = event.artist
+    if selectedPoint != None:
+        props = { 'color' : "Red" }
+        #Artist.update(event.ind, props)
+        canvasLiveMap.draw()   
+    
 
 def BtnTextHouseNrLeft_click():
     mymower.House = int(mymower.House) - 1
     if (mymower.House <= 0):
         mymower.House = 0
-
     textHouseNr.configure(text=mymower.House)
     rebuildHouseMap()
 
@@ -2291,14 +2320,20 @@ FrameLiveMap = tk.Frame(AutoPage, borderwidth="1", relief=tk.SOLID)
 FrameLiveMap.place(x=5, y=5, height=330, width=360)
 
 figLiveMap, axLiveMap = plt.subplots()
-# axLiveMap.set_xlim(left=-30, right=30)
-axLiveMap.autoscale(False)
+
+#zoom_factory(axLiveMap)
+#ph = panhandler(figLiveMap, button=2)
+#axLiveMap.autoscale(False)
 
 canvasLiveMap = FigureCanvasTkAgg(figLiveMap, master=FrameLiveMap)
 canvasLiveMap.get_tk_widget().place(x=0, y=0, width=360, height=330)
 
 axLiveMap.plot(mymower.ActiveMapX, mymower.ActiveMapY, color='r', linewidth=0.4, marker='.', markersize=2)
+axLiveMap.set_xlim(-50, 50)
+axLiveMap.set_ylim(-50, 50)
 canvasLiveMap.draw()
+
+cid2 = canvasLiveMap.mpl_connect('pick_event', onPickPoint)
 
 
 # fig, ax = plt.subplots()
@@ -2332,15 +2367,15 @@ def onMapclick(event):
     # figLiveMap.canvas.mpl_disconnect(cid)
 
 
-cid = figLiveMap.canvas.mpl_connect('button_press_event', onMapclick)
+#cid = figLiveMap.canvas.mpl_connect('button_press_event', onMapclick)
 
-toolbarLiveMap = VerticalNavigationToolbar2Tk(canvasLiveMap, AutoPage)
-toolbarLiveMap.children['!button2'].pack_forget()
-toolbarLiveMap.children['!button3'].pack_forget()
-toolbarLiveMap.children['!button4'].pack_forget()
+#toolbarLiveMap = VerticalNavigationToolbar2Tk(canvasLiveMap, AutoPage)
+#toolbarLiveMap.children['!button2'].pack_forget()
+#toolbarLiveMap.children['!button3'].pack_forget()
+#toolbarLiveMap.children['!button4'].pack_forget()
 
-toolbarLiveMap.update()
-toolbarLiveMap.place(x=370, y=5, height=150, width=30)
+#toolbarLiveMap.update()
+#toolbarLiveMap.place(x=370, y=5, height=150, width=30)
 
 
 def initActiveMap(full_house):
@@ -2453,6 +2488,17 @@ def initialPlotAutoPageFullHouse():
 
         print("error no crcMapList.npy for this house")
 
+
+    zoom_coeff=1.5
+    LiveMapMaxleft, LiveMapMaxright = axLiveMap.get_xlim()
+    LiveMapMaxtop, LiveMapMaxbottom = axLiveMap.get_ylim()
+    LiveMapMaxleft=LiveMapMaxleft*zoom_coeff
+    LiveMapMaxright=LiveMapMaxright*zoom_coeff
+    LiveMapMaxtop=LiveMapMaxtop*zoom_coeff
+    LiveMapMaxbottom=LiveMapMaxbottom*zoom_coeff
+
+    axLiveMap.set_xlim(LiveMapMaxleft, LiveMapMaxright)
+    axLiveMap.set_ylim(LiveMapMaxtop,  LiveMapMaxbottom)
     canvasLiveMap.draw()
     # print(mymower.totalMowingArea)
 
@@ -2482,7 +2528,7 @@ def initialPlotAutoPage(start, stop):
     y_lat[y_lat != 0.00]
     # print(x_lon)
     # print(y_lat)
-    axLiveMap.plot(x_lon, y_lat, color='black', linewidth=0.2)
+    axLiveMap.plot(x_lon, y_lat, color='black', linewidth=0.2,picker=True,pickradius=5)
 
     # draw perimeter
     x_lon = np.zeros(int(len(mymower.perimeter) + 1))
@@ -2498,16 +2544,17 @@ def initialPlotAutoPage(start, stop):
     polygon1 = Polygon(np.squeeze(mymower.perimeter))
     mymower.actualMowingArea = int(polygon1.area)
 
-    axLiveMap.plot(x_lon, y_lat, color='r', linewidth=0.6)  # ,marker='.',markersize=2)
-    figLiveMap.subplots_adjust(left=0, right=1, top=1, bottom=0)
+    axLiveMap.plot(x_lon, y_lat, color='r', linewidth=0.6,picker=True,pickradius=5)  # ,marker='.',markersize=2)
+    #figLiveMap.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     # draw dock
+    print("dock point ",mymower.dockPts.T)
     x_lon = np.zeros(int(len(mymower.dockPts)))
     y_lat = np.zeros(int(len(mymower.dockPts)))
     for ip in range(int(len(mymower.dockPts))):
         x_lon[ip] = mymower.dockPts[ip][0]
         y_lat[ip] = mymower.dockPts[ip][1]
-    axLiveMap.plot(x_lon, y_lat, color='b', linewidth=0.4)
+    axLiveMap.plot(x_lon, y_lat, color='b', linewidth=0.4,picker=True,pickradius=3,marker='.',markersize=2)
     # print(str(x_lon[ip])+' station '+str(y_lat[ip]) )
     # print(str(mymower.statex)+' pos     '+str(mymower.statey) )
 
@@ -2757,10 +2804,7 @@ slider2.place(x=50,y=100,anchor='nw',width=300, height=50)
 ButtonBackHome = tk.Button(ManualPage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
-""" The Console page  ************************************"""
-
-
-def ButtonListVar_click():
+def ButtonTesting_click():
     fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                "/maps02" + "/DOCK.npy"
     ##    if (os.path.exists(fileName)):
@@ -2806,11 +2850,6 @@ def ButtonListVar_click():
     print("fini")
 
 
-def ButtonConsoleMode_click():
-    message = "AT+Y2,0"
-    message = str(message)
-    message = message + '\r'
-    send_serial_message(message)
 
 
 def ButtonClearConsole_click():
@@ -2846,13 +2885,6 @@ ScrolltxtConsoleRecu.config(command=txtConsoleRecu.yview)
 txtConsoleRecu.config(yscrollcommand=ScrolltxtConsoleRecu.set)
 txtConsoleRecu.place(x=0, y=5, anchor='nw', width=800, height=290)
 
-ButtonConsoleMode = tk.Button(ConsolePage)
-ButtonConsoleMode.place(x=660, y=15, height=25, width=120)
-ButtonConsoleMode.configure(command=ButtonConsoleMode_click, text="GPS reboot")
-
-##ButtonListVar = tk.Button(ConsolePage)
-##ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
-##ButtonListVar.place(x=660,y=45, height=25, width=120)
 
 ButtonClearConsole = tk.Button(ConsolePage)
 ButtonClearConsole.place(x=660, y=75, height=35, width=120)
@@ -3067,14 +3099,86 @@ ButtonBackHome = tk.Button(InfoPage, image=imgBack, command=ButtonBackToMain_cli
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """ THE MAPS PAGE ***************************************************"""
-def onMap0click(event):
 
+
+    
+def onMap0click(event):
+    if event.button is MouseButton.LEFT:
+        print("left")
+    if event.button is MouseButton.RIGHT:
+        print("right")
+    
+    if event.button is MouseButton.FORWARD:
+        print("roll up")
+    if event.button is MouseButton.BACK:
+        print("roll rev")
+        
     if (event.dblclick):
         print(f'data coords {event.xdata} {event.ydata}')
     else:
         print("simple")
 
+ind = None
+def onMapPickPoint(event):
+    global selectedPoint
+    global ind
+    if event.mouseevent.button is MouseButton.LEFT :
+        print("UP left")
+        #line = event.artist
+        #xdata, ydata = line.get_data()
+        ind = event.ind
+        #print('Mpa pick: ',ind,x_perimeter[ind],y_perimeter[ind])
+    if event.mouseevent.button is MouseButton.RIGHT:
+         print("right")
+         print(event.mouseevent.xdata)
+    
 
+def onMap1click(event):
+    global ind
+    if event.button is MouseButton.LEFT:
+        #print("up gauche")
+        print('Mpa pick: ',ind,x_perimeter[ind],y_perimeter[ind])
+
+def onMap1release(event):
+    return
+    if event.button is MouseButton.LEFT:
+        #global option
+        if (option.get()=='Peri'):
+            x_perimeter[ind]=event.xdata
+            y_perimeter[ind]=event.ydata
+            mapPagePlotRefresh(1,0,0,0)
+        if (option.get()=='Mow'):
+            mapPagePlot(0,1,0,0)
+        if (option.get()=='Exclu'):
+            mapPagePlot(0,0,1,0)
+        if (option.get()=='Dock'):
+            print("dock")
+            x_dock[ind]=event.xdata
+            y_dock[ind]=event.ydata
+            mapPagePlotRefresh(0,0,0,1)
+
+       
+        
+
+def onMap1move(event):
+    if event.button is MouseButton.LEFT:
+        #return
+        if (option.get()=='Peri'):
+            x_perimeter[ind]=event.xdata
+            y_perimeter[ind]=event.ydata
+            mapPagePlotRefresh(1,0,0,0)
+        if (option.get()=='Mow'):
+            mapPagePlot(0,1,0,0)
+        if (option.get()=='Exclu'):
+            mapPagePlot(0,0,1,0)
+        if (option.get()=='Dock'):
+            print("dock")
+            x_dock[ind]=event.xdata
+            y_dock[ind]=event.ydata
+            mapPagePlotRefresh(0,0,0,1)
+
+    
+        
 
 #def move_on_map(event):
  #   if event.inaxes:
@@ -3125,7 +3229,7 @@ def showFullMapTab():  # tab 0 show the full map
                 y[idx1 + 1] = perimeterArray[0][1]
                 ax[0].text(polygon1.centroid.coords[0][0], polygon1.centroid.coords[0][1], mapNr, fontsize=8,
                            bbox=dict(facecolor='yellow', alpha=0.4))
-                ax[0].plot(x, y, color='r', linewidth=0.4)  # ,marker='.',markersize=2)
+                ax[0].plot(x, y, color='r', linewidth=0.4,picker=True)  # ,marker='.',markersize=2)
 
             else:
                 print("no perimeter data for this map " + str(mapNr))
@@ -3186,9 +3290,7 @@ def showFullMapTab():  # tab 0 show the full map
     else:
         print("error no crcMapList.npy for this house")
 
-    toolbar1 = VerticalNavigationToolbar2Tk(canvas[0], MapsPage)
-    toolbar1.place(x=5, y=40)
-
+        
     canvas[0].draw()
 
     MapsInfoline1.configure(text=" Total Area " + str(mymower.totalMowingArea) + " m2")
@@ -3196,11 +3298,24 @@ def showFullMapTab():  # tab 0 show the full map
 
 ##    InfoHouseNrtxt.configure(text=mymower.House)
 ##    InfoHouseNrtxt.update()
+def ButtonEditMap_click():
+   
+    if (option.get()=='Peri'):
+        mapPagePlot(1,0,0,0)
+    if (option.get()=='Mow'):
+        mapPagePlot(0,1,0,0)
+    if (option.get()=='Exclu'):
+        mapPagePlot(0,0,1,0)
+    if (option.get()=='Dock'):
+        mapPagePlot(0,0,0,1)
+    
 
+    return
 
 def onTabChange(event):
     mymower.mapSelected = int(MapsPage.index("current"))
     if (mymower.mapSelected == 0):
+        FrameEditSelection.place_forget()
         ButtonDeleteMap.place_forget()
         ButtonExportMap.place_forget()
         ButtonImportMap.place_forget()
@@ -3209,6 +3324,7 @@ def onTabChange(event):
         showFullMapTab()
         return
     else:
+        FrameEditSelection.place(x=420, y=90, height=120, width=120)
         ButtonDeleteMap.place(x=680, y=50, height=60, width=110)
         ButtonExportMap.place(x=680, y=115, height=60, width=110)
         ButtonImportMap.place(x=680, y=180, height=60, width=110)
@@ -3236,10 +3352,11 @@ def onTabChange(event):
         MapsInfoline1.configure(text=Infolinetxt)
         InfoHouseNrtxt.configure(text=mymower.House)
         InfoHouseNrtxt.update()
-        plot()
+        mapPagePlot(1,1,1,1)
         toolbar = VerticalNavigationToolbar2Tk(canvas[mymower.mapSelected], MapsPage)
-        # toolbar.update()
         toolbar.place(x=5, y=40)
+        
+        
 
     else:
         Infolinetxt = ""
@@ -3318,6 +3435,7 @@ def ButtonExportMap_click():
     if (returnval):
 
         export_map_to_mower(mymower.House, mymower.mapSelected)
+
 
 
 def export_map_to_mower(House, mapNr):  # export the into mower see decode AT message on RP
@@ -3599,131 +3717,164 @@ def import_map_from_mower():
     else:
         messagebox.showinfo('info', "No Change made in the actual map")
 
+def mapPagePlotRefresh(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
+   
+    ax[mymower.mapSelected].clear()
+    if draw_perimeter :
+        ax[mymower.mapSelected].plot(x_perimeter, y_perimeter, color='r', linewidth=0.4, marker='.', markersize=2,picker=True)
 
-def plot():
+    if draw_exclusion :
+        return
+    
+    if draw_dock : 
+        ax[mymower.mapSelected].plot(x_dock, y_dock, color='b', linewidth=0.6,marker='.', markersize=2,picker=True)
+           
+
+
+
+
+    canvas[mymower.mapSelected].draw()       
+
+    
+    
+
+def mapPagePlot(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
+    global x_perimeter
+    global y_perimeter
+    global x_dock
+    global y_dock
+    
     # print("PLOT CRC LIST")
     ax[mymower.mapSelected].clear()
     # fig[mymower.mapSelected].clear()
-    perimeterCRC = 0
-
+    
     # draw perimeter
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+    perimeterCRC = 0
+    if draw_perimeter :
+        fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/PERIMETER.npy"
 
-    if (os.path.exists(fileName)):
-        perimeter = np.load(fileName)
-        x_lon = np.zeros(int(len(perimeter) + 1))
-        y_lat = np.zeros(int(len(perimeter) + 1))
-        for ip in range(int(len(perimeter))):
-            x_lon[ip] = perimeter[ip][0]
-            y_lat[ip] = perimeter[ip][1]
-            # if showdot :
-            #    ax[mymower.mapSelected].text(x_lon[ip], y_lat[ip], ip, fontsize=8)
-            perimeterCRC = perimeterCRC + int(100 * x_lon[ip]) + int(100 * y_lat[ip])
+        if (os.path.exists(fileName)):
+            perimeter = np.load(fileName)
+            x_perimeter = np.zeros(int(len(perimeter) + 1))
+            y_perimeter = np.zeros(int(len(perimeter) + 1))
+            for ip in range(int(len(perimeter))):
+                x_perimeter[ip] = perimeter[ip][0]
+                y_perimeter[ip] = perimeter[ip][1]
+                # if showdot :
+                #    ax[mymower.mapSelected].text(x_perimeter[ip], y_perimeter[ip], ip, fontsize=8)
+                perimeterCRC = perimeterCRC + int(100 * x_perimeter[ip]) + int(100 * y_perimeter[ip])
 
-        # close the drawing
-        x_lon[ip + 1] = perimeter[0][0]
-        y_lat[ip + 1] = perimeter[0][1]
-        ax[mymower.mapSelected].plot(x_lon, y_lat, color='r', linewidth=0.4, marker='.', markersize=2)
-        fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
-    # fig[uu],ax[uu]=plt.subplots()
-    # canvas[mymower.mapSelected].draw()
-    else:
-        messagebox.showwarning('warning', "No perimeter for this map ???")
+            # close the drawing
+            x_perimeter[ip + 1] = perimeter[0][0]
+            y_perimeter[ip + 1] = perimeter[0][1]
+            ax[mymower.mapSelected].plot(x_perimeter, y_perimeter, color='r', linewidth=0.4, marker='.', markersize=2,picker=True)
+            #fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
+   
+        else:
+            messagebox.showwarning('warning', "No perimeter for this map ???")
 
-    # print("perimeterCRC ",perimeterCRC)
+   
 
     # draw mow
     mowCRC = 0
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-               "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/MOW.npy"
-
-    if (os.path.exists(fileName)):
-        mowPts = np.load(fileName)
-        x_lon = np.zeros(int(len(mowPts)))
-        y_lat = np.zeros(int(len(mowPts)))
-        for ip in range(int(len(mowPts))):
-            x_lon[ip] = mowPts[ip][0]
-            y_lat[ip] = mowPts[ip][1]
-            mowCRC = mowCRC + int(100 * x_lon[ip]) + int(100 * y_lat[ip])
-        ax[mymower.mapSelected].plot(x_lon, y_lat, color='g', linewidth=0.2)
-        # canvas[mymower.mapSelected].draw()
-    else:
-        messagebox.showwarning('warning', "No mowing points for this map ?????")
-
-    # print ("mowCRC ",mowCRC)
-
-    # draw exclusion
-    exclusionCRC = 0
-    for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
+    if draw_mow :        
         fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-                   "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/EXCLUSION" + "{0:0>2}".format(
-            mymower.exclusionNr) + ".npy"
+               "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/MOW.npy"
 
         if (os.path.exists(fileName)):
             mowPts = np.load(fileName)
-            x_lon = np.zeros(int(len(mowPts) + 1))
-            y_lat = np.zeros(int(len(mowPts) + 1))
-            if (int(len(mowPts)) >= 3):
-                for ip in range(int(len(mowPts))):
-                    x_lon[ip] = mowPts[ip][0]
-                    y_lat[ip] = mowPts[ip][1]
-                    exclusionCRC = exclusionCRC + int(100 * x_lon[ip]) + int(100 * y_lat[ip])
-                    # close the drawing
-                x_lon[ip + 1] = mowPts[0][0]
-                y_lat[ip + 1] = mowPts[0][1]
-
-                ax[mymower.mapSelected].plot(x_lon, y_lat, color='r', linewidth=1)
-            # canvas[mymower.mapSelected].draw()
+            x_mow = np.zeros(int(len(mowPts)))
+            y_mow = np.zeros(int(len(mowPts)))
+            for ip in range(int(len(mowPts))):
+                x_mow[ip] = mowPts[ip][0]
+                y_mow[ip] = mowPts[ip][1]
+                mowCRC = mowCRC + int(100 * x_mow[ip]) + int(100 * y_mow[ip])
+            ax[mymower.mapSelected].plot(x_mow, y_mow, color='g', linewidth=0.2)
+        # canvas[mymower.mapSelected].draw()
         else:
-            messagebox.showwarning('warning', "No exclusion points for this map ?????")
-    # print("exclusionCRC ",exclusionCRC)
+            messagebox.showwarning('warning', "No mowing points for this map ?????")
+
+        # print ("mowCRC ",mowCRC)
+
+    # draw exclusion
+    exclusionCRC = 0
+    if draw_exclusion :        
+        for mymower.exclusionNr in range(int(mymower.nbTotalExclusion)):
+            fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+                   "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/EXCLUSION" + "{0:0>2}".format(mymower.exclusionNr) + ".npy"
+
+            if (os.path.exists(fileName)):
+                mowPts = np.load(fileName)
+                x_lon = np.zeros(int(len(mowPts) + 1))
+                y_lat = np.zeros(int(len(mowPts) + 1))
+                if (int(len(mowPts)) >= 3):
+                    for ip in range(int(len(mowPts))):
+                        x_lon[ip] = mowPts[ip][0]
+                        y_lat[ip] = mowPts[ip][1]
+                        exclusionCRC = exclusionCRC + int(100 * x_lon[ip]) + int(100 * y_lat[ip])
+                        # close the drawing
+                    x_lon[ip + 1] = mowPts[0][0]
+                    y_lat[ip + 1] = mowPts[0][1]
+
+                    ax[mymower.mapSelected].plot(x_lon, y_lat, color='r', linewidth=1,marker='.', markersize=2,picker=True)
+                # canvas[mymower.mapSelected].draw()
+            else:
+                messagebox.showwarning('warning', "No exclusion points for this map ?????")
+        # print("exclusionCRC ",exclusionCRC)
 
     # draw dock
     dockCRC = 0
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
+    if draw_dock :        
+        fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/DOCK.npy"
 
-    if (os.path.exists(fileName)):
-        mowPts = np.load(fileName)
-        # print(mowPts)
-        x_lon = np.zeros(int(len(mowPts)))
-        y_lat = np.zeros(int(len(mowPts)))
-        for ip in range(int(len(mowPts))):
-            x_lon[ip] = mowPts[ip][0]
-            y_lat[ip] = mowPts[ip][1]
-            dockCRC = dockCRC + int(100 * x_lon[ip]) + int(100 * y_lat[ip])
-        ax[mymower.mapSelected].plot(x_lon, y_lat, color='b', linewidth=0.6)
-        # canvas[mymower.mapSelected].draw()
-    else:
-        messagebox.showwarning('warning', "No dock points for this map ?????")
+        if (os.path.exists(fileName)):
+            mowPts = np.load(fileName)
+            # print(mowPts)
+            x_dock = np.zeros(int(len(mowPts)))
+            y_dock = np.zeros(int(len(mowPts)))
+            for ip in range(int(len(mowPts))):
+                x_dock[ip] = mowPts[ip][0]
+                y_dock[ip] = mowPts[ip][1]
+                dockCRC = dockCRC + int(100 * x_dock[ip]) + int(100 * y_dock[ip])
+            ax[mymower.mapSelected].plot(x_dock, y_dock, color='b', linewidth=0.6,marker='.', markersize=2,picker=True)
+            # canvas[mymower.mapSelected].draw()
+        else:
+            messagebox.showwarning('warning', "No dock points for this map ?????")
 
     # print("dockCRC " , dockCRC)
     mymower.plotMapCRC = perimeterCRC + mowCRC + dockCRC + exclusionCRC
     ctrl = int(mymower.plotMapCRC) - int(mymower.fileMapCRC)
-    if (abs(ctrl) > mymower.mapCrcRoundingRange):
+    if draw_dock & draw_exclusion & draw_mow & draw_perimeter & (abs(ctrl) > mymower.mapCrcRoundingRange):
         messagebox.showwarning('warning',
                                "Issue into map file Try to import again this map PlotCRC / SunrayCRC : " + str(
                                    mymower.plotMapCRC) + " / " + str(mymower.fileMapCRC))
 
     # end of plot
 
-    # ax[mymower.mapSelected].set_xlabel('xlabel', fontsize=8)
-    # ax[mymower.mapSelected].set_ylabel('ylabel', fontsize=8)
-    # ax[uu].rcParams({'font.size': 22})
-    # ax[mymower.mapSelected].subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
+    
+    fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
+    
+    
     # ax[uu].axis('off')
     # ax[uu].subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
     # fig[uu](figsize=(8, 6), dpi=80)
+    # ax[mymower.mapSelected].set_xlabel('xlabel', fontsize=8)
+    # ax[mymower.mapSelected].set_ylabel('ylabel', fontsize=8)
+    # ax[uu].rcParams({'font.size': 22})
     canvas[mymower.mapSelected].draw()
 
 
 fig = [FigureCanvasTkAgg] * max_map_inUse
 
 ax = [plt] * max_map_inUse
-toolbar = [None] * max_map_inUse
+#toolbar = [None] * max_map_inUse
 for uu in range(max_map_inUse):
     fig[uu], ax[uu] = plt.subplots()
+
+#zoom_factory(ax[1])
+#ph1=panhandler(fig[1], button=2)   
 
 MapsPage = ttk.Notebook(fen1)
 FrameMapsPage = [None] * max_map_inUse
@@ -3739,13 +3890,35 @@ for i in range(max_map_inUse):
         MapsPage.add(FrameMapsPage[i], text=str(i))
 
 #binding_id = canvas[0].mpl_connect('motion_notify_event', move_on_map)
-cid1 = canvas[0].mpl_connect('button_press_event', onMap0click)
+#cid0 = canvas[0].mpl_connect('button_press_event', onMap0click)
+cid1 = canvas[1].mpl_connect('button_press_event', onMap1click)
+cid2 = canvas[1].mpl_connect('button_release_event', onMap1release)
+cid3 = canvas[1].mpl_connect('motion_notify_event', onMap1move)
 
+
+cid10 = canvas[1].mpl_connect('pick_event', onMapPickPoint)
 MapsPage.place(x=0, y=0, height=400, width=800)
 MapsPage.bind("<<NotebookTabChanged>>", onTabChange)
 
 MapsInfoline1 = tk.Label(MapsPage, text="Info maps")
-MapsInfoline1.place(x=420, y=70, height=300, width=150)
+MapsInfoline1.place(x=420, y=170, height=300, width=150)
+
+FrameEditSelection=tk.Frame(MapsPage, borderwidth="1", relief=tk.SOLID)
+FrameEditSelection.place(x=410, y=90, height=100, width=100)
+ButtonEditMap = tk.Button(FrameEditSelection, text="Edit", command=ButtonEditMap_click)
+ButtonEditMap.place(x=15, y=60, height=30, width=30)
+
+
+option = tk.StringVar()
+#option="Peri"
+R1 = tk.Radiobutton(FrameEditSelection, text="Perimeter", value="Peri", var=option)
+R2 = tk.Radiobutton(FrameEditSelection, text="Exclusion", value="Exclu", var=option)
+R3 = tk.Radiobutton(FrameEditSelection, text="Dock", value="Dock", var=option)
+R1.place(x=0,y=0)
+R2.place(x=0,y=20)
+R3.place(x=0,y=40)
+
+
 
 tk.Label(MapsPage, text="House:", font=("Arial", 15), fg='green').place(x=440, y=45)
 InfoHouseNrtxt = tk.Label(MapsPage, text=mymower.House, font=("Arial", 30), fg='red')
@@ -3790,8 +3963,8 @@ def visionThread(num):
     # IM_HEIGHT = 480  # slightly faster framerate
     IM_WIDTH = 544  # Use smaller resolution for
     IM_HEIGHT = 400  # slightly faster framerate
-    # IM_WIDTH = 320   # Use smaller resolution for
-    # IM_HEIGHT = 240  # slightly faster framerate
+    #IM_WIDTH = 320   # Use smaller resolution for
+    #IM_HEIGHT = 240  # slightly faster framerate
 
     # This is needed for working directory
     sys.path.append('..')
@@ -3876,7 +4049,7 @@ def visionThread(num):
     camera = Picamera2(0)
 
     # normalSize = (640, 480)
-    lowresSize = (544, 400)
+    lowresSize = (IM_WIDTH, IM_HEIGHT)
     config = camera.create_preview_configuration({'format': 'RGB888', "size": lowresSize})
     camera.configure(config)
     camera.set_controls({"FrameRate": frame_rate})
@@ -3914,8 +4087,8 @@ def visionThread(num):
 
                 t2 = cv2.getTickCount()
 
-                # cv2.putText(frame,"FPS: {0:.2f}".format(frame_rate_calc),(30,50),font,1,(255,255,0),2,cv2.LINE_AA)
-                cv2.putText(frame, time.strftime("%x  %X"), (30, 50), font, 0.8, (255, 255, 0), 2, cv2.LINE_AA)
+                cv2.putText(frame,"FPS: {0:.2f}".format(frame_rate_calc),(30,50),font,1,(255,255,0),2,cv2.LINE_AA)
+               # cv2.putText(frame, time.strftime("%x  %X"), (30, 50), font, 0.8, (255, 255, 0), 2, cv2.LINE_AA)
 
                 # All  results have been drawn on the frame, so it's time to display it.
 
@@ -4049,7 +4222,22 @@ ButtonBackHome = tk.Button(StreamVideoPage, image=imgBack, command=ButtonBackToM
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """ THE TEST PAGE ***************************************************"""
+def ButtonListVar_click():
+    message = "AT+Q1,0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
+    ConsolePage.tkraise()
+    fen1.update()
 
+
+def ButtonRebootGps_click():
+    message = "AT+Y2,0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
+    ConsolePage.tkraise()
+    fen1.update()
 
 def ButtonOdo10TurnFw_click():
     message = "AT+E1"
@@ -4133,11 +4321,23 @@ ButtonOdo3MlFw.configure(text="3 Meters Forward")
 ##ButtonOdoRot180.configure(command = ButtonOdoRot180_click)
 ##ButtonOdoRot180.configure(text="Rotate 180 Degree")
 
+
+
+
+
 ButtonOdoRot360 = tk.Button(TestPage)
 ButtonOdoRot360.place(x=30, y=165, height=25, width=200)
 ButtonOdoRot360.configure(command=ButtonOdoRot360_click)
 ButtonOdoRot360.configure(text="Rotate 360 Degree")
 
+
+ButtonRebootGps = tk.Button(TestPage)
+ButtonRebootGps.place(x=30, y=195, height=25, width=120)
+ButtonRebootGps.configure(command=ButtonRebootGps_click, text="GPS reboot")
+
+ButtonListVar = tk.Button(TestPage)
+ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
+ButtonListVar.place(x=30,y=225, height=25, width=120)
 
 ##ButtonOdoRotNonStop= tk.Button(TestPage)
 ##ButtonOdoRotNonStop.place(x=300,y=165, height=25, width=200)

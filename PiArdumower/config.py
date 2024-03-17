@@ -85,7 +85,7 @@ if (os.name=='nt'):
     myBaudRate = 115200
     myOS="Windows"
     # If PCB1.3 is used with DUE normalu always true
-    DueConnectedOnPi = False
+    DueConnectedOnPi = True
 
     # Old code possible to directly connect a GPS to PI for tracking only
     GpsConnectedOnPi = False
