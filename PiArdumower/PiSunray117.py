@@ -2488,8 +2488,8 @@ def initialPlotAutoPageFullHouse():
 
         print("error no crcMapList.npy for this house")
 
-
-    zoom_coeff=1.5
+    
+    zoom_coeff= AutoSliderZoom.get()
     LiveMapMaxleft, LiveMapMaxright = axLiveMap.get_xlim()
     LiveMapMaxtop, LiveMapMaxbottom = axLiveMap.get_ylim()
     LiveMapMaxleft=LiveMapMaxleft*zoom_coeff
@@ -2575,6 +2575,10 @@ AutoInfoMapLabel.place(x=150, y=335)
 tk_infoTimer.set("")
 AutoInfoMapTimer = tk.Label(AutoPage, textvariable=tk_infoTimer, font=("Arial", 10))
 AutoInfoMapTimer.place(x=150, y=360)
+
+AutoSliderZoom = tk.Scale(AutoPage, orient='vertical', resolution=5, font=("Arial", 8), from_=0, to=100)
+AutoSliderZoom.place(x=400, y=175, width=40, height=170)
+AutoSliderZoom.set(100)
 
 AutoSliderStart = tk.Scale(AutoPage, orient='vertical', resolution=1, font=("Arial", 8), from_=-1, to=100)
 AutoSliderStart.place(x=430, y=175, width=40, height=170)
