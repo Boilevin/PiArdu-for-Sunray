@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "116"
+PiVersion = "119"
 from pathlib import Path
 import traceback
 import sys
@@ -762,8 +762,11 @@ def decode_AT_message(message):  # decode sunray console message
 
         GpsInfoline9.set("gpsnumSV : " + mymower.gpsnumSVdgps + "/" + mymower.gpsnumSV)
         tk_gpsnumSV.set(mymower.gpsnumSVdgps + "/" + mymower.gpsnumSV)
-
-        mymower.mapCRC = int(list_recu[16])
+        if (mymower.mapCRC != int(list_recu[16])):
+            search_map(int(list_recu[16]))
+        else:
+            mymower.mapCRC = int(list_recu[16])
+            
         GpsInfoline11.set("MapCRC : " + str(mymower.mapCRC))
 
         mymower.lateralerror = list_recu[17]
@@ -1374,6 +1377,7 @@ def ButtonCamera_click():
 
 def ButtonMaps_click():
     mymower.focusOnPage = 9
+
     MapsPage.tkraise()
     MapsPage.select(0)
     # MapsPage.select(mymower.mapSelected)
@@ -1413,48 +1417,58 @@ def ButtonConsole_click():
 def ButtonTest_click():
     mymower.focusOnPage = 5
     TestPage.tkraise()
+    
+def search_map(map_crc_ToFind):
+    # try to find the map crc in the raspberry pi and init eveything
+    # check if the map locate into mower have changed
+    mymower.mapCRC = map_crc_ToFind
+    map_find = False
+    for search_house in range(10):
+        print("search into house nr : ",search_house)
+
+        fileName = cwd + "/House" + "{0:0>2}".format(search_house) + "/crcMapList.npy"
+        if ((os.path.exists(fileName)) & (mymower.mapCRC != 0)):
+            crcMapList = np.load(fileName)
+            for ip in range(int(len(crcMapList))):
+##                print("ctrl")
+##                print(crcMapList[ip,1])
+##                print(mymower.mapCRC)
+                ctrl = crcMapList[ip, 1] - map_crc_ToFind
+                # print(ctrl)
+                if (abs(ctrl) < mymower.mapCrcRoundingRange):
+                    mymower.mapSelected = int(crcMapList[ip, 0])
+                    mymower.House=int(search_house)
+                    print("House : ",mymower.House," Map selected : ",mymower.mapSelected)
+                    map_find = True
+                    if (mymower.full_house == 0):
+                        initActiveMap(0)
+                        initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
+                    else:
+                        rebuildHouseMap()
+                        # initActiveMap(1)
+                        # initialPlotAutoPageFullHouse()
+                    return
+
+    if (map_find == False):
+        mymower.mapCRC=0
+        messagebox.showwarning('warning', "Map unknow (try to upload, see map page)" + str(mymower.mapCRC))
+
 
 
 def ButtonAuto_click():
+    if (mymower.full_house == 0):
+        initActiveMap(0)
+        initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
+    else:
+        rebuildHouseMap()
+        # initActiveMap(1)
+        # initialPlotAutoPageFullHouse()
+      
+    
     mymower.focusOnPage = 1
     AutoPage.tkraise()
 
-    # try to find the map crc in the raspberry pi and init eveything
-    # check if the map locate into mower have changed
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + "/crcMapList.npy"
-    if ((os.path.exists(fileName)) & (mymower.mapCRC != 0)):
-        crcMapList = np.load(fileName)
-        map_find = False
-        for ip in range(int(len(crcMapList))):
-            # print("ctrl")
-            # print(crcMapList[ip,1])
-            # print(mymower.mapCRC)
-            ctrl = crcMapList[ip, 1] - mymower.mapCRC
-            # print(ctrl)
-            if (abs(ctrl) < mymower.mapCrcRoundingRange):
-                mymower.mapSelected = int(crcMapList[ip, 0])
-                ##                print("Auto page map selected")
-                ##                print(mymower.mapSelected)
-                ##                print("auto page map CRC")
-                ##                print(mymower.mapCRC)
-                map_find = True
-                if (mymower.full_house == 0):
-                    initActiveMap(0)
-                    initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
-                else:
-                    rebuildHouseMap()
-                    # initActiveMap(1)
-                    # initialPlotAutoPageFullHouse()
-
-                return
-        if (map_find == False):
-            messagebox.showwarning('warning', "Map unknow (try to upload, see map page)" + str(mymower.mapCRC))
-
-
-
-    else:
-        rebuildHouseMap()
-
+    
 
 ##        initActiveMap(1)
 ##        initialPlotAutoPageFullHouse()
@@ -2186,22 +2200,13 @@ def onPickPoint(event):
     if selectedPoint != None:
         props = { 'color' : "Red" }
         #Artist.update(event.ind, props)
-        canvasLiveMap.draw()
-   
-   
-    
-   
-    
-    
-    
-    
+        canvasLiveMap.draw()   
     
 
 def BtnTextHouseNrLeft_click():
     mymower.House = int(mymower.House) - 1
     if (mymower.House <= 0):
         mymower.House = 0
-
     textHouseNr.configure(text=mymower.House)
     rebuildHouseMap()
 
@@ -2323,20 +2328,27 @@ PosFrame.configure(borderwidth="3", relief=tk.GROOVE, background="#d9d9d9", high
 tk.Label(PosFrame, text="POS", fg='green', font=("Arial", 12)).place(x=25, y=1)
 tk.Label(PosFrame, textvariable=tk_mowPointIdx, fg='black', font=("Arial", 10)).pack(side='bottom', anchor='center')
 
+
+
 # creation of the canvas for map view
 FrameLiveMap = tk.Frame(AutoPage, borderwidth="1", relief=tk.SOLID)
 FrameLiveMap.place(x=5, y=5, height=330, width=360)
+# creation of the frame for map zoom menu
+MenuFrame= tk.Frame(AutoPage, borderwidth="1", relief=tk.SOLID)
+MenuFrame.place(x=365, y=5, height=330, width=25)
 
 figLiveMap, axLiveMap = plt.subplots()
-# axLiveMap.set_xlim(left=-30, right=30)
-zoom_factory(axLiveMap)
-ph = panhandler(figLiveMap, button=2)
+
+#zoom_factory(axLiveMap)
+#ph = panhandler(figLiveMap, button=2)
 #axLiveMap.autoscale(False)
 
 canvasLiveMap = FigureCanvasTkAgg(figLiveMap, master=FrameLiveMap)
 canvasLiveMap.get_tk_widget().place(x=0, y=0, width=360, height=330)
 
 axLiveMap.plot(mymower.ActiveMapX, mymower.ActiveMapY, color='r', linewidth=0.4, marker='.', markersize=2)
+axLiveMap.set_xlim(-50, 50)
+axLiveMap.set_ylim(-50, 50)
 canvasLiveMap.draw()
 
 cid2 = canvasLiveMap.mpl_connect('pick_event', onPickPoint)
@@ -2423,9 +2435,15 @@ def initActiveMap(full_house):
                "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/DOCK.npy"
     if (os.path.exists(fileName)):
         mymower.dockPts = np.load(fileName)
-
-
+    textHouseNr.config(text=mymower.House)
+    tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " Total Area " + str(mymower.totalMowingArea) + " m2")
+    
+zoom_coeff=1
 def initialPlotAutoPageFullHouse():
+    global LiveMapMaxleft
+    global LiveMapMaxright
+    global LiveMapMaxtop
+    global LiveMapMaxbottom
     if (mymower.mapSelected == 0):
         return
     mymower.mapNrList.clear
@@ -2485,20 +2503,35 @@ def initialPlotAutoPageFullHouse():
 
                 else:
                     messagebox.showwarning('warning', "No mowing points for this map ?????")
-
+        textHouseNr.config(text=mymower.House)
         tk_AutoInfoMap.set(
             "House " + "{0:0>2}".format(mymower.House) + " Total Area " + str(mymower.totalMowingArea) + " m2")
 
     else:
+        textHouseNr.config(text=mymower.House)
         tk_AutoInfoMap.set("House " + "{0:0>2}".format(mymower.House) + " NO MAP ")
 
         print("error no crcMapList.npy for this house")
 
+    
+   
+    LiveMapMaxleft, LiveMapMaxright = axLiveMap.get_xlim()
+    LiveMapMaxbottom, LiveMapMaxtop  = axLiveMap.get_ylim()
+   
+   
+    axLiveMap.set_xlim(LiveMapMaxleft, LiveMapMaxright)
+    axLiveMap.set_ylim( LiveMapMaxbottom,LiveMapMaxtop)
     canvasLiveMap.draw()
+
     # print(mymower.totalMowingArea)
 
 
 def initialPlotAutoPage(start, stop):
+    #global zoom_coeff
+    global LiveMapMaxleft
+    global LiveMapMaxright
+    global LiveMapMaxtop
+    global LiveMapMaxbottom
     if (mymower.mapSelected == 0):
         print("no map selected into initialPlotAutoPage")
         return
@@ -2543,7 +2576,7 @@ def initialPlotAutoPage(start, stop):
     #figLiveMap.subplots_adjust(left=0, right=1, top=1, bottom=0)
 
     # draw dock
-    print("dock point ",mymower.dockPts.T)
+    #print("dock point ",mymower.dockPts.T)
     x_lon = np.zeros(int(len(mymower.dockPts)))
     y_lat = np.zeros(int(len(mymower.dockPts)))
     for ip in range(int(len(mymower.dockPts))):
@@ -2559,8 +2592,31 @@ def initialPlotAutoPage(start, stop):
     tk_AutoInfoMap.set(
         "House " + "{0:0>2}".format(mymower.House) + " Map " + "{0:0>2}".format(mymower.mapSelected) + " Area " + str(
             mymower.actualMowingArea) + " m2")
-
+    
+    LiveMapMaxleft, LiveMapMaxright = axLiveMap.get_xlim()
+    LiveMapMaxbottom, LiveMapMaxtop  = axLiveMap.get_ylim()
+   
+  
+    axLiveMap.set_xlim(LiveMapMaxleft, LiveMapMaxright)
+    axLiveMap.set_ylim( LiveMapMaxbottom,LiveMapMaxtop)
     canvasLiveMap.draw()
+    
+def updatesAutoZoomPlus_click():
+    global zoom_coeff
+    zoom_coeff= zoom_coeff - 0.1
+    updatesAutoZoom(zoom_coeff)
+
+def updatesAutoZoomMinus_click():
+    global zoom_coeff
+    zoom_coeff= zoom_coeff + 0.1
+    updatesAutoZoom(zoom_coeff)
+
+def updatesAutoZoom(zoom_coeff):
+    print(zoom_coeff)
+    axLiveMap.set_xlim(LiveMapMaxleft*zoom_coeff, LiveMapMaxright*zoom_coeff)
+    axLiveMap.set_ylim(LiveMapMaxbottom*zoom_coeff, LiveMapMaxtop*zoom_coeff)
+    canvasLiveMap.draw()
+   
 
 
 tk_AutoInfoMap.set("No Map")
@@ -2607,6 +2663,14 @@ Buttonhome = tk.Button(AutoPage, image=imgHome, command=button_home_click)
 Buttonhome.place(x=680, y=145, width=100, height=130)
 ButtonStopAllAuto = tk.Button(AutoPage, image=imgStopAll, command=button_stop_all_click)
 ButtonStopAllAuto.place(x=680, y=10, width=100, height=130)
+
+
+ButtonupdatesAutoZoomMinus=tk.Button(MenuFrame,text='-',  command=updatesAutoZoomMinus_click)
+ButtonupdatesAutoZoomMinus.place(x=2, y=0, width=20, height=20)
+ButtonupdatesAutoZoomPlus=tk.Button(MenuFrame,text='+',  command=updatesAutoZoomPlus_click)
+ButtonupdatesAutoZoomPlus.place(x=2, y=50, width=20, height=20)
+
+
 
 ButtonBackHome = tk.Button(AutoPage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
@@ -2844,18 +2908,7 @@ def ButtonTesting_click():
             print("erreur y :", ip, 100 * float(mowPts[ip][1]), 100 * float(mowPts1[ip][1]))
     print("fini")
 
-def ButtonListVar_click():
-    message = "AT+Q1,0"
-    message = str(message)
-    message = message + '\r'
-    send_serial_message(message)
 
-
-def ButtonRebootGps_click():
-    message = "AT+Y2,0"
-    message = str(message)
-    message = message + '\r'
-    send_serial_message(message)
 
 
 def ButtonClearConsole_click():
@@ -2891,13 +2944,6 @@ ScrolltxtConsoleRecu.config(command=txtConsoleRecu.yview)
 txtConsoleRecu.config(yscrollcommand=ScrolltxtConsoleRecu.set)
 txtConsoleRecu.place(x=0, y=5, anchor='nw', width=800, height=290)
 
-ButtonRebootGps = tk.Button(ConsolePage)
-ButtonRebootGps.place(x=660, y=15, height=25, width=120)
-ButtonRebootGps.configure(command=ButtonRebootGps_click, text="GPS reboot")
-
-ButtonListVar = tk.Button(ConsolePage)
-ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
-ButtonListVar.place(x=660,y=45, height=25, width=120)
 
 ButtonClearConsole = tk.Button(ConsolePage)
 ButtonClearConsole.place(x=660, y=75, height=35, width=120)
@@ -3130,6 +3176,7 @@ def onMap0click(event):
         print(f'data coords {event.xdata} {event.ydata}')
     else:
         print("simple")
+
 ind = None
 def onMapPickPoint(event):
     global selectedPoint
@@ -4234,7 +4281,22 @@ ButtonBackHome = tk.Button(StreamVideoPage, image=imgBack, command=ButtonBackToM
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """ THE TEST PAGE ***************************************************"""
+def ButtonListVar_click():
+    message = "AT+Q1,0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
+    ConsolePage.tkraise()
+    fen1.update()
 
+
+def ButtonRebootGps_click():
+    message = "AT+Y2,0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
+    ConsolePage.tkraise()
+    fen1.update()
 
 def ButtonOdo10TurnFw_click():
     message = "AT+E1"
@@ -4318,11 +4380,23 @@ ButtonOdo3MlFw.configure(text="3 Meters Forward")
 ##ButtonOdoRot180.configure(command = ButtonOdoRot180_click)
 ##ButtonOdoRot180.configure(text="Rotate 180 Degree")
 
+
+
+
+
 ButtonOdoRot360 = tk.Button(TestPage)
 ButtonOdoRot360.place(x=30, y=165, height=25, width=200)
 ButtonOdoRot360.configure(command=ButtonOdoRot360_click)
 ButtonOdoRot360.configure(text="Rotate 360 Degree")
 
+
+ButtonRebootGps = tk.Button(TestPage)
+ButtonRebootGps.place(x=30, y=195, height=25, width=120)
+ButtonRebootGps.configure(command=ButtonRebootGps_click, text="GPS reboot")
+
+ButtonListVar = tk.Button(TestPage)
+ButtonListVar.configure(command = ButtonListVar_click,text="List Var")
+ButtonListVar.place(x=30,y=225, height=25, width=120)
 
 ##ButtonOdoRotNonStop= tk.Button(TestPage)
 ##ButtonOdoRotNonStop.place(x=300,y=165, height=25, width=200)

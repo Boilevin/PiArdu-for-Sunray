@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "117"
+PiVersion = "118"
 from pathlib import Path
 import traceback
 import sys
@@ -2367,7 +2367,7 @@ def onMapclick(event):
     # figLiveMap.canvas.mpl_disconnect(cid)
 
 
-#cid = figLiveMap.canvas.mpl_connect('button_press_event', onMapclick)
+cid = figLiveMap.canvas.mpl_connect('button_press_event', onMapclick)
 
 #toolbarLiveMap = VerticalNavigationToolbar2Tk(canvasLiveMap, AutoPage)
 #toolbarLiveMap.children['!button2'].pack_forget()
@@ -2420,6 +2420,7 @@ def initActiveMap(full_house):
 
 
 def initialPlotAutoPageFullHouse():
+    
     if (mymower.mapSelected == 0):
         return
     mymower.mapNrList.clear
@@ -2489,18 +2490,22 @@ def initialPlotAutoPageFullHouse():
         print("error no crcMapList.npy for this house")
 
     
-    zoom_coeff= AutoSliderZoom.get()
+    
     LiveMapMaxleft, LiveMapMaxright = axLiveMap.get_xlim()
     LiveMapMaxtop, LiveMapMaxbottom = axLiveMap.get_ylim()
-    LiveMapMaxleft=LiveMapMaxleft*zoom_coeff
-    LiveMapMaxright=LiveMapMaxright*zoom_coeff
-    LiveMapMaxtop=LiveMapMaxtop*zoom_coeff
-    LiveMapMaxbottom=LiveMapMaxbottom*zoom_coeff
+   
 
     axLiveMap.set_xlim(LiveMapMaxleft, LiveMapMaxright)
     axLiveMap.set_ylim(LiveMapMaxtop,  LiveMapMaxbottom)
     canvasLiveMap.draw()
     # print(mymower.totalMowingArea)
+def updatesAutoSliderZoom(event):
+    zoom_coeff= AutoSliderZoom.get()
+    axLiveMap.set_xlim(LiveMapMaxleft, LiveMapMaxright)
+    axLiveMap.set_ylim(LiveMapMaxtop,  LiveMapMaxbottom)
+    #axLiveMap.set_xlim(LiveMapMaxleft * zoom_coeff, LiveMapMaxright * zoom_coeff)
+    #axLiveMap.set_ylim(LiveMapMaxtop * zoom_coeff,  LiveMapMaxbottom * zoom_coeff)
+    canvasLiveMap.draw()
 
 
 def initialPlotAutoPage(start, stop):
@@ -2576,9 +2581,10 @@ tk_infoTimer.set("")
 AutoInfoMapTimer = tk.Label(AutoPage, textvariable=tk_infoTimer, font=("Arial", 10))
 AutoInfoMapTimer.place(x=150, y=360)
 
-AutoSliderZoom = tk.Scale(AutoPage, orient='vertical', resolution=5, font=("Arial", 8), from_=0, to=100)
+AutoSliderZoom = tk.Scale(AutoPage, orient='vertical', resolution=0.1, font=("Arial", 8), from_=0.1, to=1)
 AutoSliderZoom.place(x=400, y=175, width=40, height=170)
-AutoSliderZoom.set(100)
+AutoSliderZoom.set(1)
+AutoSliderZoom.bind("<ButtonRelease-1>", updatesAutoSliderZoom)
 
 AutoSliderStart = tk.Scale(AutoPage, orient='vertical', resolution=1, font=("Arial", 8), from_=-1, to=100)
 AutoSliderStart.place(x=430, y=175, width=40, height=170)
