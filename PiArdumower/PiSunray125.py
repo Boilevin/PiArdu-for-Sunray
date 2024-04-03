@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "119"
+PiVersion = "125"
 from pathlib import Path
 import traceback
 import sys
