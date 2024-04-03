@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "125"
+PiVersion = "126"
 from pathlib import Path
 import traceback
 import sys
@@ -451,6 +451,7 @@ class mower:
         self.useDebugConsole = False
         self.timerUse = False
         self.rainUse = False
+        self.record_perimeter =False
 
         self.cameraManualPageVideoStreamOn = False
         if cameraConnected:
@@ -463,6 +464,7 @@ if cameraConnected:
 
 myRobot = robot()
 myDate = datetime()
+last_time_add_point=dt.datetime.now()
 
 if myOS == "Linux":
     myps4 = PS4Controller()
@@ -479,6 +481,25 @@ def consoleInsertText(texte):
 def checkSerial():  # the main loop is here
     ##    if (mymower.isSendindMap) :
     ##        return
+
+    
+    
+    if (mymower.record_perimeter) :
+        global last_time_add_point
+        if (dt.datetime.now()-last_time_add_point).seconds >1:
+            print("tt")
+            last_time_add_point=dt.datetime.now()
+            polygon_closed = False #check_if_polygon_is_closed
+            point_too_close = False#check_if_point_is_close_to_last_one
+            if (not bool(polygon_closed)) and (not bool(point_too_close)):
+                print("rr")
+
+
+        
+
+
+
+
     try:
         global DueConnectedOnPi
         if (DueConnectedOnPi and Due_Serial.inWaiting() != 0):
@@ -2694,6 +2715,15 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """**************************THE MANUAL PAGE  **********************************************"""
 
+def test2_click():
+    
+    if (mymower.record_perimeter) :
+        mymower.record_perimeter=False
+    else:
+        mymower.record_perimeter=True
+    
+
+
 
 def ButtonJoystickON_click():
     subprocess.call(["rfkill", "unblock", "bluetooth"])
@@ -2819,6 +2849,9 @@ ManualPage = tk.Frame(fen1)
 ManualPage.place(x=0, y=0, height=400, width=800)
 Frame1 = tk.Frame(ManualPage)
 Frame1.place(x=0, y=0, height=300, width=300)
+
+Buttontest2 = tk.Button(ManualPage, text="Test2", wraplength=80, command=test2_click)
+Buttontest2.place(x=320, y=00, height=30, width=30)
 
 ManualFrameStreamVideo = tk.Frame(ManualPage, borderwidth="1", relief=tk.SOLID)
 ManualFrameStreamVideo.place(x=325, y=30, width=320, height=240)
@@ -3263,17 +3296,13 @@ def onMap1move(event):
 
 
 showdot = False
-showsimplify=False
-
-
 def test1():
     global showdot
     showdot = True
     showFullMapTab()
     print("test1")
-def test2_click():
-    global showsimplify
-    showsimplify=True
+
+
 
 def showFullMapTab():  # tab 0 show the full map
 
@@ -3854,8 +3883,10 @@ def mapPagePlot(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
             ax[mymower.mapSelected].plot(x_perimeter, y_perimeter, color='r', linewidth=0.4, marker='.', markersize=2,picker=True)
             #fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
             
+
+            #show simplify polygon
             polygon1 = Polygon(np.squeeze(perimeter))
-            polygon2=polygon1.simplify(tolerance=0.02, preserve_topology=True)
+            polygon2=polygon1.simplify(tolerance=0.02, preserve_topology=True) #tolerance is 2 cm here
             a, b = polygon2.exterior.xy
             print(len(a),len(perimeter))
             ax[mymower.mapSelected].plot(a,b)
@@ -3996,8 +4027,7 @@ FrameEditSelection=tk.Frame(MapsPage, borderwidth="1", relief=tk.SOLID)
 FrameEditSelection.place(x=410, y=90, height=100, width=100)
 ButtonEditMap = tk.Button(FrameEditSelection, text="Edit", command=ButtonEditMap_click)
 ButtonEditMap.place(x=15, y=60, height=30, width=30)
-Buttontest2 = tk.Button(FrameEditSelection, text="Test2", wraplength=80, command=test2_click)
-Buttontest2.place(x=40, y=60, height=30, width=30)
+
 
 option = tk.StringVar()
 #option="Peri"
