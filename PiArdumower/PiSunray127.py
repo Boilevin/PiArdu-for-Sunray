@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "126"
+PiVersion = "127"
 from pathlib import Path
 import traceback
 import sys
@@ -3430,6 +3430,26 @@ def showFullMapTab():  # tab 0 show the full map
     else:
         print("error no crcMapList.npy for this house")
 
+
+
+    ax[0].clear()
+     # draw newPerimeter
+    x_lon = np.zeros(int(len(mymower.newPerimeter) + 1))
+    y_lat = np.zeros(int(len(mymower.newPerimeter) + 1))
+    for ip in range(int(len(mymower.newPerimeter))):
+        x_lon[ip] = mymower.newPerimeter[ip][0]
+        y_lat[ip] = mymower.newPerimeter[ip][1]
+        # close the drawing
+    x_lon[ip + 1] = mymower.newPerimeter[0][0]
+    y_lat[ip + 1] = mymower.newPerimeter[0][1]
+
+    # perimeterArray=mymower.map[mymower.mapSelected]
+    polygon4 = Polygon(np.squeeze(mymower.newPerimeter))
+    
+
+    ax[0].plot(x_lon, y_lat, color='g', linewidth=0.6,picker=True,pickradius=5)  # ,marker='.',markersize=2)
+    #figLiveMap.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
         
     canvas[0].draw()
 
@@ -3895,18 +3915,15 @@ def mapPagePlot(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
                "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/PERIMETER.npy"
 
         if (os.path.exists(fileName)):
-            
-
             perimeter = np.load(fileName)
-            
-
             x_perimeter = np.zeros(int(len(perimeter) + 1))
             y_perimeter = np.zeros(int(len(perimeter) + 1))
+            #need to compute the CRC drawing
             for ip in range(int(len(perimeter))):
                 x_perimeter[ip] = perimeter[ip][0]
                 y_perimeter[ip] = perimeter[ip][1]
-                # if showdot :
-                #    ax[mymower.mapSelected].text(x_perimeter[ip], y_perimeter[ip], ip, fontsize=8)
+                if showdot :
+                    ax[mymower.mapSelected].text(x_perimeter[ip], y_perimeter[ip], ip, fontsize=8)
                 perimeterCRC = perimeterCRC + int(100 * x_perimeter[ip]) + int(100 * y_perimeter[ip])
 
             # close the drawing
@@ -3914,14 +3931,17 @@ def mapPagePlot(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
             y_perimeter[ip + 1] = perimeter[0][1]
             ax[mymower.mapSelected].plot(x_perimeter, y_perimeter, color='r', linewidth=0.4, marker='.', markersize=2,picker=True)
             #fig[mymower.mapSelected].subplots_adjust(left=0, right=1, top=1, bottom=0)
-            
-
-            #show simplify polygon
-            polygon1 = Polygon(np.squeeze(perimeter))
-            polygon2=polygon1.simplify(tolerance=0.02, preserve_topology=True) #tolerance is 2 cm here
-            a, b = polygon2.exterior.xy
-            print(len(a),len(perimeter))
-            ax[mymower.mapSelected].plot(a,b)
+           
+           
+            #polygon6 = Polygon(np.squeeze(perimeter))
+            #ax[mymower.mapSelected].plot(*polygon6.exterior.xy, color='r', linewidth=0.4, marker='.', markersize=2,picker=True)
+            #bber100
+            #show simplify polygon for testing
+            # polygon1 = Polygon(np.squeeze(perimeter))
+            # polygon2=polygon1.simplify(tolerance=0.02, preserve_topology=True) #tolerance is 2 cm here
+            # a, b = polygon2.exterior.xy
+            # print(len(a),len(perimeter))
+            # ax[mymower.mapSelected].plot(a,b)
    
         else:
             messagebox.showwarning('warning', "No perimeter for this map ???")
@@ -4016,6 +4036,7 @@ def mapPagePlot(draw_perimeter,draw_mow,draw_exclusion,draw_dock):
     # ax[mymower.mapSelected].set_ylabel('ylabel', fontsize=8)
     # ax[uu].rcParams({'font.size': 22})
     canvas[mymower.mapSelected].draw()
+    plt.show()
 
 
 fig = [FigureCanvasTkAgg] * max_map_inUse
