@@ -31,7 +31,7 @@ class robot:
         
         #drive motor
         self.motorAccel=0
-        self.motorSpeedMaxRpm=0.2
+        self.motorSpeedMaxRpm=0.3
         self.motorSpeedMaxPwm=0.3
         self.motorPowerMax=0
         self.motorSenseRightScale=0

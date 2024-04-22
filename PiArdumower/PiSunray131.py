@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "130"
+PiVersion = "131"
 from pathlib import Path
 import traceback
 import sys
@@ -482,39 +482,37 @@ def consoleInsertText(texte):
 #################################### MAIN LOOP ###############################################
 last_pos=Point(0,0)
 def checkSerial():  # the main loop is here
-    ##    if (mymower.isSendindMap) :
-    ##        return
+  
+   
+    #code to record a new map
     global last_pos
     global last_time_add_point
-
     if (mymower.record_perimeter) :
                 
         if (dt.datetime.now()-last_time_add_point).seconds >= 1:
-            print("tt",(dt.datetime.now()-last_time_add_point))
-            last_time_add_point=dt.datetime.now()
+            
+            
             polygon_closed = False #check_if_polygon_is_closed
             point_too_close = False#check_if_point_is_close_to_last_one
-            
-            #ring = LinearRing( ((0, 0), (0, 1), (1 ,1 ), (1 , 0)) )
-            #ring.is_closed
-            
-            
+                        
             actual_pos=Point(mymower.statex,mymower.statey)
-            print(actual_pos)
-            print(last_pos)
+            
             move_dist=Point.distance(actual_pos,last_pos)
             if move_dist <= 0.02 :
                 point_too_close=True
-                print("trop pret" , move_dist)
+                print("Too close pointt" , move_dist)
 
             if (not bool(polygon_closed)) and (not bool(point_too_close)):
-                print("rr")
-                print()
+                print("Add Pt : ",actual_pos)
                 
                 mymower.newPerimeterx.append(mymower.statex)
                 mymower.newPerimetery.append(mymower.statey)
                 last_pos=actual_pos
                 #mymower.newPerimeter.append(actual_pos)
+                updateNewMapsPage()
+
+
+            last_time_add_point=dt.datetime.now()
                 
 
 
@@ -1410,6 +1408,10 @@ def ButtonInfo_click():
     mymower.focusOnPage = 11
     InfoPage.tkraise()
 
+def NewMapsPage_click():
+    mymower.focusOnPage = 12
+    NewMapsPage.tkraise()
+
 
 def ButtonCamera_click():
     mymower.focusOnPage = 8
@@ -1434,7 +1436,7 @@ def ButtonSchedule_click():
 
 
 def ButtonManual_click():
-    manualSpeedSlider.set(myRobot.motorSpeedMaxPwm)
+    manualSpeedSlider.set(myRobot.motorSpeedMaxRpm)
     mymower.focusOnPage = 2
     ManualPage.tkraise()
 
@@ -2183,7 +2185,7 @@ def add_vision_line():
     rebuild_treeVisionview()
 
 
-def test1():
+def vison_test():
     search_code = (b'dog')
     for i in range(0, len(vision_list)):
         if (str("b'" + vision_list[i][0] + "'") == str(search_code)):
@@ -2220,7 +2222,7 @@ ButtonVisionDel.place(x=660, y=170, height=30, width=100)
 ButtonVisionSave = tk.Button(tabVision, text="Save to File", command=save_VisionList)
 ButtonVisionSave.place(x=530, y=210, height=60, width=140)
 
-# ButtonVisionTest = tk.Button(tabVision, text="seek test",command = test1)
+# ButtonVisionTest = tk.Button(tabVision, text="seek test",command = vison_test)
 # ButtonVisionTest.place(x=530, y=260, height=60, width=140)
 
 rebuild_treeVisionview()
@@ -2741,11 +2743,6 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 """**************************THE MANUAL PAGE  **********************************************"""
 
-
-    
-
-
-
 def ButtonJoystickON_click():
     subprocess.call(["rfkill", "unblock", "bluetooth"])
     print("BlueTooth Start")
@@ -2839,15 +2836,6 @@ def ButtonStop_click():
     message = message + '\r'
     send_serial_message(message)
 
-
-def updateManualCamera():
-    frame = mymower.camera.capture_array('main')
-    img_update = ImageTk.PhotoImage(Image.fromarray(frame))
-    ManualLabelStreamVideo.configure(image=img_update)
-    ManualLabelStreamVideo.image = img_update
-    ManualLabelStreamVideo.update()
-
-
 def startManualCamera():
     mymower.cameraManualPageVideoStreamOn = True
     mymower.camera = Picamera2(0)
@@ -2859,6 +2847,12 @@ def startManualCamera():
     # time.sleep(2)
     mymower.camera.start(show_preview=False)
 
+def updateManualCamera():
+    frame = mymower.camera.capture_array('main')
+    img_update = ImageTk.PhotoImage(Image.fromarray(frame))
+    ManualLabelStreamVideo.configure(image=img_update)
+    ManualLabelStreamVideo.image = img_update
+    ManualLabelStreamVideo.update()
 
 def stopManualCamera():
     mymower.cameraManualPageVideoStreamOn = False
@@ -2882,24 +2876,16 @@ ManualLabelStreamVideo.grid(row=0, column=0, pady=0, padx=0)
 
 ButtonForward = tk.Button(Frame1, image=imgForward, command=ButtonForward_click, repeatdelay=500, repeatinterval=500)
 ButtonForward.place(x=100, y=0, height=100, width=100)
-
-ButtonForwardLeft = tk.Button(Frame1, image=imgForwardLeft, command=ButtonForwardLeft_click, repeatdelay=500,
-                              repeatinterval=500)
+ButtonForwardLeft = tk.Button(Frame1, image=imgForwardLeft, command=ButtonForwardLeft_click, repeatdelay=500,repeatinterval=500)
 ButtonForwardLeft.place(x=0, y=0, height=100, width=100)
-
-ButtonForwardRight = tk.Button(Frame1, image=imgForwardRight, command=ButtonForwardRight_click, repeatdelay=500,
-                               repeatinterval=500)
+ButtonForwardRight = tk.Button(Frame1, image=imgForwardRight, command=ButtonForwardRight_click, repeatdelay=500,repeatinterval=500)
 ButtonForwardRight.place(x=200, y=0, height=100, width=100)
-
 ButtonStop = tk.Button(Frame1, image=imgStop, command=ButtonStop_click)
 ButtonStop.place(x=100, y=100, height=100, width=100)
-
 ButtonRight = tk.Button(Frame1, image=imgRight, command=ButtonRight_click, repeatdelay=500, repeatinterval=500)
 ButtonRight.place(x=200, y=100, height=100, width=100)
-
 ButtonLeft = tk.Button(Frame1, image=imgLeft, command=ButtonLeft_click, repeatdelay=500, repeatinterval=500)
 ButtonLeft.place(x=0, y=100, height=100, width=100)
-
 ButtonReverse = tk.Button(Frame1, image=imgReverse, command=ButtonReverse_click)
 ButtonReverse.place(x=100, y=200, height=100, width=100)
 
@@ -3026,6 +3012,84 @@ ButtonSaveReceived.configure(command=ButtonSaveReceived_click, text="Save To Fil
 
 ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=660, y=160, height=120, width=120)
+
+
+""" THE NEW MAPS PAGE ***************************************************"""
+
+
+NewMapsPage = tk.Frame(fen1)
+NewMapsPage.place(x=0, y=0, height=400, width=800)
+FrameNMP1 = tk.Frame(NewMapsPage)
+FrameNMP1.place(x=0, y=0, height=300, width=300)
+ButtonForwardNMP = tk.Button(FrameNMP1, image=imgForward, command=ButtonForward_click, repeatdelay=500, repeatinterval=500)
+ButtonForwardNMP.place(x=100, y=0, height=100, width=100)
+ButtonForwardLeftNMP = tk.Button(FrameNMP1, image=imgForwardLeft, command=ButtonForwardLeft_click, repeatdelay=500,repeatinterval=500)
+ButtonForwardLeftNMP.place(x=0, y=0, height=100, width=100)
+ButtonForwardRightNMP = tk.Button(FrameNMP1, image=imgForwardRight, command=ButtonForwardRight_click, repeatdelay=500,repeatinterval=500)
+ButtonForwardRightNMP.place(x=200, y=0, height=100, width=100)
+ButtonStopNMP = tk.Button(FrameNMP1, image=imgStop, command=ButtonStop_click)
+ButtonStopNMP.place(x=100, y=100, height=100, width=100)
+ButtonRightNMP = tk.Button(FrameNMP1, image=imgRight, command=ButtonRight_click, repeatdelay=500, repeatinterval=500)
+ButtonRightNMP.place(x=200, y=100, height=100, width=100)
+ButtonLeftNMP = tk.Button(FrameNMP1, image=imgLeft, command=ButtonLeft_click, repeatdelay=500, repeatinterval=500)
+ButtonLeftNMP.place(x=0, y=100, height=100, width=100)
+ButtonReverseNMP = tk.Button(FrameNMP1, image=imgReverse, command=ButtonReverse_click)
+ButtonReverseNMP.place(x=100, y=200, height=100, width=100)
+
+
+# creation of the canvas for map view
+FrameLiveMapNMP = tk.Frame(NewMapsPage, borderwidth="1", relief=tk.SOLID)
+FrameLiveMapNMP.place(x=305, y=5, width=360,height=330)
+figLiveMapNMP, axLiveMapNMP = plt.subplots()
+canvasLiveMapNMP = FigureCanvasTkAgg(figLiveMapNMP, master=FrameLiveMapNMP)
+canvasLiveMapNMP.get_tk_widget().place(x=0, y=0, width=360, height=330)
+
+axLiveMapNMP.plot(mymower.ActiveMapX, mymower.ActiveMapY, color='r', linewidth=0.4, marker='.', markersize=2)
+#axLiveMapNMP.set_xlim(-50, 50)
+#axLiveMapNMP.set_ylim(-50, 50)
+canvasLiveMapNMP.draw()
+
+def BtnRecordMapStop_click():
+    mymower.record_perimeter=False
+    #array_2d = list(zip(list1, list2))
+    #mymower.newPerimeter=np.array(np.array(mymower.newPerimeterx),np.array(mymower.newPerimetery))
+    mymower.newPerimeter=np.array(list(zip(mymower.newPerimeterx,mymower.newPerimetery)))
+    fileName = cwd + "/new_map.npy"
+    np.save(fileName, mymower.newPerimeter, allow_pickle=True, fix_imports=True)
+    print(mymower.newPerimeter)
+
+def BtnRecordMapStart_click():
+    mymower.record_perimeter=True
+
+def updateNewMapsPage():
+        
+    mowerpos1 = [mymower.laststatex, mymower.statex]
+    mowerpos2 = [mymower.laststatey, mymower.statey]
+
+    axLiveMapNMP.plot(mowerpos1, mowerpos2, color='g', linewidth=2)
+    axLiveMapNMP.scatter(mymower.statex,mymower.statey, color='g', s=10)
+    #axLiveMap.autoscale(False)
+    canvasLiveMapNMP.draw()
+
+
+
+
+BtnRecordMapStop = tk.Button(NewMapsPage, command=BtnRecordMapStop_click, text="Stop Record")
+BtnRecordMapStop.place(x=0, y=370, height=25, width=80)
+BtnRecordMapStart = tk.Button(NewMapsPage, command=BtnRecordMapStart_click, text="Start Record")
+BtnRecordMapStart.place(x=90, y=370, height=25, width=80)
+
+
+
+
+
+
+
+
+
+
+
+
 
 """ THE PLOT PAGE ***************************************************"""
 
@@ -3231,17 +3295,11 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 """ THE MAPS PAGE ***************************************************"""
 
 def ButtonCreateNewMap_click():
-    if (mymower.record_perimeter) :
-        mymower.record_perimeter=False
-        #array_2d = list(zip(list1, list2))
-        #mymower.newPerimeter=np.array(np.array(mymower.newPerimeterx),np.array(mymower.newPerimetery))
-        mymower.newPerimeter=np.array(list(zip(mymower.newPerimeterx,mymower.newPerimetery)))
-        fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-                       "/maps" + "{0:0>2}".format(mapNr) + "/new_map.npy"
-        np.save(fileName, mymower.newPerimeter, allow_pickle=True, fix_imports=True)
-        print(mymower.newPerimeter)
-    else:
-        mymower.record_perimeter=True
+    
+    mymower.focusOnPage = 12
+    NewMapsPage.tkraise()
+
+    
     
 def onMap0click(event):
     if event.button is MouseButton.LEFT:
@@ -3328,11 +3386,11 @@ def onMap1move(event):
 
 
 showdot = False
-def test1():
+def Button_showDot_Nr_click():
     global showdot
     showdot = True
     showFullMapTab()
-    print("test1")
+    print("_showDot_Nr")
 
 
 
@@ -3500,17 +3558,20 @@ def onTabChange(event):
         ButtonDeleteMap.place_forget()
         ButtonExportMap.place_forget()
         ButtonImportMap.place_forget()
-        Buttontest1.place(x=680, y=180, height=60, width=110)
+        Button_showDot_Nr.place(x=680, y=180, height=60, width=110)
         FrameEditSelection.place(x=420, y=90, height=120, width=120)
+        ButtonCreateNewMap.place(x=680, y=25, height=30, width=110)
 
         showFullMapTab()
         return
     else:
+        ButtonCreateNewMap.place_forget()
         FrameEditSelection.place_forget()
-        ButtonDeleteMap.place(x=680, y=50, height=60, width=110)
+        
+        ButtonDeleteMap.place(x=680, y=60, height=30, width=110)
         ButtonExportMap.place(x=680, y=115, height=60, width=110)
         ButtonImportMap.place(x=680, y=180, height=60, width=110)
-        Buttontest1.place_forget()
+        Button_showDot_Nr.place_forget()
 
     fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                "/maps" + "{0:0>2}".format(mymower.mapSelected) + "/MAIN.npy"
@@ -4105,8 +4166,6 @@ FrameEditSelection.place(x=410, y=90, height=100, width=100)
 ButtonEditMap = tk.Button(FrameEditSelection, text="Edit", command=ButtonEditMap_click)
 ButtonEditMap.place(x=15, y=60, height=30, width=30)
 
-ButtonCreateNewMap = tk.Button(FrameEditSelection, text="New", wraplength=80, command=ButtonCreateNewMap_click)
-ButtonCreateNewMap.place(x=50, y=60, height=30, width=30)
 
 
 
@@ -4125,8 +4184,12 @@ tk.Label(MapsPage, text="House:", font=("Arial", 15), fg='green').place(x=440, y
 InfoHouseNrtxt = tk.Label(MapsPage, text=mymower.House, font=("Arial", 30), fg='red')
 InfoHouseNrtxt.place(x=515, y=30, height=60, width=60)
 
-ButtonDeleteMap = tk.Button(MapsPage, text="Delete This Map", wraplength=80, command=delete_map)
-ButtonDeleteMap.place(x=680, y=50, height=60, width=110)
+
+ButtonCreateNewMap = tk.Button(MapsPage, text="New Map", wraplength=80, command=ButtonCreateNewMap_click)
+ButtonCreateNewMap.place(x=680, y=15, height=30, width=110)
+
+ButtonDeleteMap = tk.Button(MapsPage, text="Delete Map", wraplength=80, command=delete_map)
+ButtonDeleteMap.place(x=680, y=60, height=30, width=110)
 
 ButtonExportMap = tk.Button(MapsPage, text="EXPORT TO ROBOT", wraplength=80, command=ButtonExportMap_click)
 ButtonExportMap.place(x=680, y=115, height=60, width=110)
@@ -4134,8 +4197,8 @@ ButtonExportMap.place(x=680, y=115, height=60, width=110)
 ButtonImportMap = tk.Button(MapsPage, text="IMPORT FROM ROBOT", wraplength=80, command=import_map_from_mower)
 ButtonImportMap.place(x=680, y=180, height=60, width=110)
 
-Buttontest1 = tk.Button(MapsPage, text="Test", wraplength=80, command=test1)
-Buttontest1.place(x=680, y=200, height=60, width=110)
+Button_showDot_Nr = tk.Button(MapsPage, text="Test", wraplength=80, command=Button_showDot_Nr_click)
+Button_showDot_Nr.place(x=680, y=200, height=60, width=110)
 
 ButtonBackHome = tk.Button(MapsPage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=119, width=115)
