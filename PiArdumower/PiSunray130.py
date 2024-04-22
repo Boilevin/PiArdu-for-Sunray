@@ -3,7 +3,7 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "128"
+PiVersion = "130"
 from pathlib import Path
 import traceback
 import sys
@@ -3443,6 +3443,16 @@ def showFullMapTab():  # tab 0 show the full map
     if (os.path.exists(fileName)):
         perimeterArray = np.load(fileName)
         polygon1 = Polygon(np.squeeze(perimeterArray))
+        from shapely.validation import explain_validity
+        print(explain_validity(polygon1))
+        print("valid  polygon init " ,polygon1.is_valid)
+        new_polygon = polygon1.buffer(0)
+        print("valid  polygon2 " ,new_polygon.is_valid)
+
+        
+        
+        
+
         mymower.polygon[mapNr] = polygon1  # keep the polygon for later search
         #mymower.totalMowingArea = mymower.totalMowingArea + int(polygon1.area)  # print(polygon1.centroid.coords[0][0]) center of polygon
                 # draw perimeter
@@ -3460,7 +3470,7 @@ def showFullMapTab():  # tab 0 show the full map
 
 
 
-        polygon2=polygon1.simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
+        polygon2=new_polygon.simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
         a, b = polygon2.exterior.xy
         print(len(a),len(perimeterArray))
         ax[0].plot(a,b,color='g', linewidth=0.4,picker=True,marker='.')
