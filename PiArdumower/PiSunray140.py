@@ -3,13 +3,20 @@
 
 # WARNING don't work on OS french langage because tkinter fail to manage the , decimal separator on slider or need a dot instead
 
-PiVersion = "134"
+PiVersion = "140"
 from pathlib import Path
 import traceback
 import sys
 import serial
 import time
 import datetime as dt
+
+
+from backend.map import map
+import networkx as nx
+
+
+#from backend.map import path
 
 # import csv
 import matplotlib.pyplot as plt
@@ -23,7 +30,12 @@ from mpl_interactions import zoom_factory, panhandler
 
 
 from shapely import geometry
-from shapely.geometry import Polygon,Point,LineString
+
+
+from shapely.ops import *
+from shapely.geometry import *
+
+#from shapely.geometry import Polygon,Point,LineString
 #     from shapely import union as PolygonUnion
 #     polygon2=PolygonUnion(mymower.polygon[7],mymower.polygon[4])
 #     polygon3=PolygonUnion(mymower.polygon[2],mymower.polygon[3])
@@ -2969,8 +2981,781 @@ ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_
 ButtonBackHome.place(x=660, y=160, height=120, width=120)
 
 
-""" THE NEW MAPS PAGE ***************************************************"""
 
+
+""" THE NEW MAPS PAGE ***************************************************"""
+from backend.data.cfgdata import PathPlannerCfg
+from dataclasses import dataclass, field, asdict
+from shapely.geometry import LinearRing
+from shapely.geometry import MultiLineString
+from pathfinder import pathfinder
+class Perimeter:
+    import pandas as pd
+    import networkx as nx
+    name: str = ''
+    angle_offset: int = 0
+    perimeter: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    perimeter_polygon: Polygon = Polygon()
+    selected_perimeter: Polygon = Polygon()
+    perimeter_for_plot: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    perimeter_points: MultiPoint = MultiPoint()
+    search_wire: LineString = LineString()
+    search_wire_points: MultiPoint = MultiPoint()
+    gotopoints: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    gotopoint: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    mowpath: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    preview: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    obstacles: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    #obstacle_img: Image = field(default_factory = lambda: 
+     #                           Image.open(os.path.dirname(__file__).replace('/backend/data', '/assets/icons/obstacle.png')))
+   
+    obstacle_img: pd.DataFrame = field(default_factory=lambda: pd.DataFrame())
+    
+    astar_graph: nx.Graph = nx.Graph()
+    areatomow: float = 0
+    distancetogo: float = 0
+    map_crc: int = None
+    current_perimeter_file: str = ''
+    plotgotopoints: bool = False
+    # Mow progress
+    finished_distance = 0
+    distance = 0
+    distance_perc = 0
+    finished_idx = 0
+    idx = 0
+    idx_perc = 0 
+    # Progress bar
+    calculating: bool = False
+    calculated_progress: int = 0
+    total_progress: int = 0
+    task_progress: int = 0
+    total_tasks: int = 0
+
+current_map=Perimeter()
+
+def check_direct_way(border: Polygon, start: list, end: list) -> bool:
+    way = LineString([start, end])
+    direct_way_possible = way.within(border)
+    return direct_way_possible
+
+def Cutedge_create_route(perimeter: Polygon, mowborder: str, mowexclusion: bool, 
+                 mowborderccw: bool, last_coord: list, border: Polygon,
+                 figure: str) -> list:
+    route_tmp = []
+    edges_pol = []
+    if mowborder == 'yes':
+        route_tmp = list(perimeter.exterior.coords)
+        ###Remove double values###
+        route_tmp = list(dict.fromkeys(route_tmp))
+        ring = LinearRing(route_tmp)
+        ###Check is counter clock wise###
+        if not ring.is_ccw and mowborderccw == True:
+            route_tmp.reverse()
+        ###Look for shortest way from start point###
+        first_coords = [min(route_tmp, key=lambda coord: (coord[0]-last_coord[0])**2 + (coord[1]-last_coord[1])**2)]
+        first_coords_nr = route_tmp.index(first_coords[0])
+        route_tmp = route_tmp[first_coords_nr:]+route_tmp[:first_coords_nr]
+        route_tmp.append(route_tmp[0])
+        if figure == 'MultiPolygon':
+            direct_way_possible = check_direct_way(border, last_coord, route_tmp[0])
+            if not direct_way_possible:
+                print('Coverage path planner (planing route for cut to edge): No direct way for cut to edge possible, figure saved as to do for path planner')
+                edges_pol.append(Polygon(perimeter.exterior.coords))
+                route_tmp = []
+    if mowexclusion == True:
+        for i in range(len(perimeter.interiors)):
+            edges_pol.append(Polygon(perimeter.interiors[i].coords))
+    return route_tmp, edges_pol
+
+def Lines_create_route(perimeter: Polygon, mowborder: str, mowexclusion: bool, 
+                 mowborderccw: bool, last_coord: list, border: Polygon,
+                 figure: str) -> list:
+    
+    route_tmp = []
+    edges_pol = []
+    if mowborder == 'yes':
+        route_tmp = list(perimeter.exterior.coords)
+        ###Remove double values###
+        route_tmp = list(dict.fromkeys(route_tmp))
+        ring = LinearRing(route_tmp)
+        ###Check is counter clock wise###
+        if not ring.is_ccw and mowborderccw == True:
+            route_tmp.reverse()
+        ###Look for shortest way from start point###
+        first_coords = [min(route_tmp, key=lambda coord: (coord[0]-last_coord[0])**2 + (coord[1]-last_coord[1])**2)]
+        first_coords_nr = route_tmp.index(first_coords[0])
+        route_tmp = route_tmp[first_coords_nr:]+route_tmp[:first_coords_nr]
+        route_tmp.append(route_tmp[0])
+        if figure == 'MultiPolygon':
+            direct_way_possible = check_direct_way(border, last_coord, route_tmp[0])
+            if not direct_way_possible:
+                print('Coverage path planner (planing route for cut to edge): No direct way for cut to edge possible, figure saved as to do for path planner')
+                edges_pol.append(Polygon(perimeter.exterior.coords))
+                route_tmp = []
+    if mowexclusion == True:
+        for i in range(len(perimeter.interiors)):
+            edges_pol.append(Polygon(perimeter.interiors[i].coords))
+    return route_tmp, edges_pol
+
+def Ring_create_polygons(current_polygon: Polygon, width: float) -> list:
+    polygons = []
+    perimeter_coords = list(current_polygon.exterior.coords)
+    polygons.append(Polygon((perimeter_coords)))
+    #Check if perimeter is last polygon and add a centroid
+    last_polygon = current_polygon.buffer(width, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
+    last_polygon = last_polygon.simplify(0.02, preserve_topology=False)
+    if last_polygon.is_empty:
+        centroid = current_polygon.centroid
+        polygons.append(centroid)
+    for exclusion in current_polygon.interiors:
+        exclusion_coords = exclusion.coords
+        polygons.append(Polygon((exclusion_coords)))
+    return polygons
+
+def Ring_split_multipolygons(current_polygons: MultiPolygon, width: float) -> list:
+    polygons = []
+    for polygon in current_polygons.geoms:
+        polygons.extend(Ring_create_polygons(polygon, width))
+    return polygons
+
+import pandas as pd
+
+def Ring_shortest_path_to_point(border: Polygon, points_to_check: list, route: list) -> list:
+    end_of_route = route[-1]
+    way_nr = None
+    route_tmp = None
+    current_shortest_way_coord = [end_of_route, list(points_to_check[0].coords)[0]]
+    current_shortest_way = LineString(current_shortest_way_coord)
+    current_shortest_way_length = current_shortest_way.length
+    #Handle shapely problem in case if linestring has length. Within perimeter delivers False
+    if current_shortest_way_length == 0:
+        current_shortest_way = Point((current_shortest_way_coord[0]))
+    for i, point in enumerate(points_to_check):
+        shortest_way_coord = [end_of_route, list(point.coords)[0]]
+        shortest_way = LineString((shortest_way_coord))
+        shortest_way_length = shortest_way.length
+        #Handle shapely problem in case if linestring has length. Within perimeter delivers False
+        if shortest_way_length == 0:
+            shortest_way = Point((shortest_way_coord[0]))
+        if (shortest_way_length <= current_shortest_way_length and shortest_way.within(border)) or (shortest_way_length == 0 and shortest_way.touches(border)):
+            current_shortest_way_length = shortest_way_length
+            route_tmp = list(point.coords)
+            way_nr = i
+    return route_tmp, way_nr, current_shortest_way_length
+
+def Ring_shortest_path_to_exclusion(border: Polygon, edges_to_check: list, route: list) -> list:
+    end_of_route = route[-1]
+    way_nr = None
+    route_tmp = None
+    current_shortest_way_coord = nearest_points(Point((end_of_route)), MultiPoint(edges_to_check[0].exterior.coords))
+    current_shortest_way = LineString((current_shortest_way_coord))
+    current_shortest_way_length = current_shortest_way.length
+    #Handle shapely problem in case if linestring has length. Within perimeter delivers False
+    if current_shortest_way_length <= 0.01:
+        current_shortest_way_length = 0
+        current_shortest_way = Point((current_shortest_way_coord[1]))
+    for i, edge in enumerate(edges_to_check):
+        shortest_way_coord = nearest_points(Point((end_of_route)), MultiPoint(edge.exterior.coords))
+        shortest_way = LineString((shortest_way_coord))
+        shortest_way_length = shortest_way.length
+        #Handle shapely problem in case if linestring has length. Within perimeter delivers False
+        if shortest_way_length <= 0.01:
+            shortest_way_length = 0
+            shortest_way = Point((shortest_way_coord[1]))
+        if (shortest_way_length <= current_shortest_way_length and shortest_way.within(border)) or (shortest_way_length == 0 and shortest_way.touches(border)):
+            current_shortest_way_length = shortest_way_length
+            route_tmp = list(edge.exterior.coords)
+            route_tmp.pop(-1)
+            first_coords_nr = route_tmp.index(list(shortest_way_coord[-1].coords)[0])
+            route_tmp = route_tmp[first_coords_nr:]+route_tmp[:first_coords_nr]
+            route_tmp.append(route_tmp[0])
+            #Check for cw or ccw, which way shorter
+            route_1 = [route[-1]]
+            route_1.extend(route_tmp)
+            route_2 = [route[-1]]
+            route_tmp.reverse()
+            route_2.extend(route_tmp)
+            route1_length = LineString((route_1)).length
+            route2_length = LineString((route_2)).length
+            if route1_length < route2_length:
+                route_tmp.reverse()
+            way_nr = i
+    return route_tmp, way_nr, current_shortest_way_length
+
+def Ring_calcroute(areatomow, border, route, parameters):
+    print('Coverage path planner (rings): Start coverage path planner')
+    mowccw = parameters.mowborderccw
+    print(parameters)
+    pathfinder.create()
+    pathfinder.angle = 0
+    if len(route) == 1:
+        print('Coverage path planner (rings): Route is just start point, check if the point within perimeter')
+        if not Point((route[-1])).within(border) or not Point((route[-1])).touches(border):
+            print('Coverage path planner (rings): Rover is outside perimeter, interpolate to the border')
+            route_tmp = border.exterior.coords
+            route = [min(route_tmp, key=lambda coord: (coord[0]-route[-1][0])**2 + (coord[1]-route[-1][1])**2)]
+            print('Coverage path planner (rings): New start point: '+str(route))
+    
+    print('Coverage path planner (rings): Create polygons')
+    areatomow_tmp = areatomow
+    polygons = []
+    while True:
+        if areatomow_tmp.is_empty:
+            print('Coverage path planner (rings): Calculation done')
+            break
+        if areatomow_tmp.geom_type == 'Polygon':
+            polygons.extend(Ring_create_polygons(areatomow_tmp, -parameters.width))
+        elif areatomow_tmp.geom_type == 'MultiPolygon':
+            polygons.extend(Ring_split_multipolygons(areatomow_tmp, -parameters.width))
+        else:
+            print('Unknown figure')
+            break
+        areatomow_tmp = areatomow_tmp.buffer(-parameters.width, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
+        areatomow_tmp = areatomow_tmp.simplify(0.02, preserve_topology=False)
+    print('Coverage path planner (rings): Polygons created. Polygons to calculate: '+str(len(polygons)))
+
+    print('Coverage path planner (calc rings): Create ways')
+    ways_to_go = pd.DataFrame()
+    for i, polygon in enumerate(polygons):
+        if polygon.geom_type == 'Polygon':
+            pol_df = pd.DataFrame({'name': 'polygon'+str(i), 'shapely': polygon, 'coords': [list(polygon.exterior.coords)], 'type': 'polygon', 'gone': False, 'take into account': True})
+        else:
+            pol_df = pd.DataFrame({'name': 'polygon'+str(i), 'shapely': polygon, 'coords': [list(polygon.coords)], 'type': 'point', 'gone': False, 'take into account': True})
+        ways_to_go = pd.concat([ways_to_go, pol_df], ignore_index=True)
+    
+    print('Coverage path planner (calc rings): Starting loop')
+    while True:
+        gone_way_pol = None
+        gone_way_pt = None
+        ways = ways_to_go[ways_to_go['gone'] == False]
+        if ways.empty:
+            print('Coverage path planner (calc rings): Calculation done')
+            break
+        ways_polygons = ways_to_go[(ways_to_go['type'] == 'polygon') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True)]
+        ways_points = ways_to_go[(ways_to_go['type'] == 'point') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True)]
+        print('Check for polygons to cut in range')
+        if not ways_polygons.empty:
+            possible_pol = ways_polygons
+            possible_pol = possible_pol.reset_index(drop=True)
+            route_pol_way, gone_way_pol, length_to_pol = Ring_shortest_path_to_exclusion(border, possible_pol['shapely'].to_list(), route)  
+        else:
+            print('No direct way to a polygon found')
+        if not ways_points.empty:
+            possible_pt = ways_points
+            possible_pt = possible_pt.reset_index(drop=True)
+            route_pt_way, gone_way_pt, length_to_pt = Ring_shortest_path_to_point(border, possible_pt['shapely'].to_list(), route)
+        #Decide for a shortest way
+        if gone_way_pol != None and gone_way_pt != None:
+            if length_to_pol < length_to_pt:
+                index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_pol.loc[gone_way_pol, 'shapely'].exterior.coords))].index.array[0] 
+                ways_to_go.at[index, 'gone'] = True
+                print('Found way to a polygon: Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+                route.extend(route_pol_way)  
+                # Progress-bar data
+                current_map.total_progress = len(ways_to_go)
+                current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+            else:
+                index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_pt.loc[gone_way_pt, 'shapely'].coords))].index.array[0]
+                ways_to_go.at[index, 'gone'] = True
+                print('Found way to a point: Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+                route.extend(route_pt_way)
+                # Progress-bar data
+                current_map.total_progress = len(ways_to_go)
+                current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        elif gone_way_pol != None:
+            index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_pol.loc[gone_way_pol, 'shapely'].exterior.coords))].index.array[0] 
+            ways_to_go.at[index, 'gone'] = True
+            print('Found way to a polygon: Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+            route.extend(route_pol_way)
+            # Progress-bar data
+            current_map.total_progress = len(ways_to_go)
+            current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        elif gone_way_pt != None:
+            index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_pt.loc[gone_way_pt, 'shapely'].coords))].index.array[0]
+            ways_to_go.at[index, 'gone'] = True
+            print('Found way to a point: Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+            route.extend(route_pt_way)
+            # Progress-bar data
+            current_map.total_progress = len(ways_to_go)
+            current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        else:
+            print('No point for start over direct way found. Starting A* pathfinder') 
+            possible_goals = ways_to_go[ways_to_go['gone'] == False]
+            for i in range(len(possible_goals)):
+                if not possible_goals.empty:
+                    if possible_goals.iloc[i]['type'] == 'polygon':
+                        goal = nearest_points(Point(route[-1]), MultiPoint((list(possible_goals.iloc[i]['shapely'].exterior.coords))))[1]
+                    else:
+                        goal = nearest_points(Point(route[-1]), Point((list(possible_goals.iloc[i]['shapely'].coords))))[1]
+                    goal = list(goal.coords)
+                route_astar = pathfinder.find_way(route[-1], goal)
+                if route_astar != []:
+                    index = possible_goals.index.values[0]
+                    route.extend(route_astar)
+                    break
+            if route_astar == []:
+                print('Coverage patha planner (rings): Could not finish calculation')
+                break
+           
+    return route
+
+
+def Cutedge_calcroute(area_to_mow, parameters, start):
+    print('Backend: Calc route for cutedge')
+    mowoffs = -parameters.width
+    if parameters.mowborder != 0:
+        mowborder = 'yes'
+    else:
+        mowborder = 'no'
+    mowexclusion = parameters.mowexclusion
+    mowborderccw = parameters.mowborderccw
+    rounds = parameters.mowborder
+    num_edge_per = min(parameters.distancetoborder, 2)
+    start_coords = start
+    route = []
+    route_tmp = []
+    edges_pol = []
+
+    area_to_mow_tmp = area_to_mow
+    last_coord = start[0]
+    for i in range(rounds):
+        if area_to_mow_tmp.is_empty:
+            print('Coverage path planner (planing route for cut to edge): Could not finished distancetoborderloop, please check your settings. Max value: '+str(i))
+            break
+        elif area_to_mow_tmp.geom_type == 'MultiPolygon':
+            print('Coverage path planner (planing route for cut to edge): MultiPolygon detected, creating loop')
+            for single_polygon in area_to_mow_tmp.geoms:
+                route_tmp, edges_pol_tmp = Cutedge_create_route(single_polygon, mowborder, mowexclusion, mowborderccw, last_coord, area_to_mow, 'MultiPolygon')
+                print('Coverage path planner (planing route for cut to edge): Loop call delivered route: '+str(route_tmp))
+                print('Coverage path planner (planing route for cut to edge): Loop call delivered figures to mow: '+str(len(edges_pol_tmp)))
+                if route_tmp != []:
+                    route.extend(route_tmp)
+                    last_coord = route[-1]
+                edges_pol.extend(edges_pol_tmp)
+        elif area_to_mow_tmp.geom_type == 'Polygon':
+            print('Coverage path planner (planing route for cut to edge): Polygon detected')
+            route_tmp, edges_pol_tmp = Cutedge_create_route(area_to_mow_tmp, mowborder, mowexclusion, mowborderccw, last_coord, area_to_mow, 'Polygon')
+            print('Coverage path planner (planing route for cut to edge): Call delivered route: '+str(route_tmp))
+            print('Coverage path planner (planing route for cut to edge): Call delivered figures to mow: '+str(len(edges_pol_tmp)))
+            if route_tmp != []:
+                route.extend(route_tmp)
+                last_coord = route[-1]
+            edges_pol.extend(edges_pol_tmp)
+        else:
+            print('Coverage path planner (planing route for cut to edge): Unknown figure, calculation incomplete. Shapely: '+area_to_mow_tmp.geom_type)
+            break
+    
+        area_to_mow_tmp = area_to_mow_tmp.buffer(mowoffs, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
+        area_to_mow_tmp = area_to_mow_tmp.simplify(0.05, preserve_topology=False)
+
+    if route == []:
+        route.extend(start)
+    
+    print('Coverage path planner (planing route for cut to edge): Calculation finished')
+    print('Coverage path planner (planing route for cut to edge): Route '+str(len(route))+' points; Exclusions to calculate: '+str(len(edges_pol)))
+    return route, edges_pol
+def Lines_check_prio_lines(ways_to_go: pd.DataFrame, border: Polygon, current_level: int, route: list, angle: int) -> list:
+    possible_start = []
+    gone_way = None
+    #Standard call, look for lines: same level, level under, level over
+    if current_level != None:
+        #Check for prio lines 
+        ways_area = ways_to_go[(ways_to_go['type'] == 'area') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True) & (ways_to_go['level_min'] <= current_level+1) & (ways_to_go['level_min']>=current_level-1)]
+        if not ways_area.empty:
+            #possible_start = list(ways_area['coords'])
+            possible_start1 = min(ways_area['coords'], key=lambda coord: (coord[0][0]-route[-1][0])**2 + (coord[0][1]-route[-1][1])**2)
+            possible_start2 = min(ways_area['coords'], key=lambda coord: (coord[1][0]-route[-1][0])**2 + (coord[1][1]-route[-1][1])**2)
+            possible_start = [possible_start1, possible_start2]
+            route_line_way, gone_way, length_to_line = Lines_shortest_path(border, possible_start, route, angle)
+            return route_line_way, gone_way, length_to_line, possible_start
+        else:
+            #Check for all lines and pick the nearest two 
+            ways_area = ways_to_go[(ways_to_go['type'] == 'area') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True)]
+            if not ways_area.empty:
+                possible_start1 = min(ways_area['coords'], key=lambda coord: (coord[0][0]-route[-1][0])**2 + (coord[0][1]-route[-1][1])**2)
+                possible_start2 = min(ways_area['coords'], key=lambda coord: (coord[1][0]-route[-1][0])**2 + (coord[1][1]-route[-1][1])**2)
+                possible_start = [possible_start1, possible_start2]
+                route_line_way, gone_way, length_to_line = Lines_shortest_path(border, possible_start, route, angle)
+                return route_line_way, gone_way, length_to_line, possible_start
+            else:
+                return None, None, None, None
+    #If curren_level == None, then it is first call or no prio lines accessable
+    if current_level == None or gone_way == None:
+        ways_area = ways_to_go[(ways_to_go['type'] == 'area') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True)]
+        if not ways_area.empty:
+            possible_start1 = min(ways_area['coords'], key=lambda coord: (coord[0][0]-route[-1][0])**2 + (coord[0][1]-route[-1][1])**2)
+            possible_start2 = min(ways_area['coords'], key=lambda coord: (coord[1][0]-route[-1][0])**2 + (coord[1][1]-route[-1][1])**2)
+            possible_start = [possible_start1, possible_start2]
+            route_line_way, gone_way, length_to_line = Lines_shortest_path(border, possible_start, route, angle)
+            return route_line_way, gone_way, length_to_line, possible_start
+        else:
+            return None, None, None, None
+    
+def Lines_shortest_path(border: Polygon, ways_to_check: list, route: list, angle: int) -> list:
+    possible_line = ways_to_check[0]
+    end_of_route = route[-1]
+    current_shortest_way = LineString((end_of_route, possible_line[0])).length
+    way_nr = None
+    route_tmp = None
+    for i, way in enumerate(ways_to_check):
+        if way_nr != None and current_shortest_way < 2*0.18:
+            break
+        line_coord = way
+        way_rev = way.copy()
+        way_rev.reverse()
+        line_coord_rev = way_rev
+        way_to_line = LineString((end_of_route, line_coord[0]))
+        length_of_way = way_to_line.length
+        #Handle shapely problem in case if linestring has length. Within perimeter delivers False
+        if length_of_way == 0:
+            way_to_line = Point((end_of_route))
+            length_of_way = 0
+        way_to_line_rev = LineString((end_of_route, line_coord_rev[0]))
+        length_of_rev_way = way_to_line_rev.length
+        if length_of_rev_way == 0:
+            way_to_line_rev = Point((end_of_route))
+            length_of_rev_way = 0
+        #Now check the shortest path, direct or reverse line
+        if (length_of_way <= current_shortest_way and way_to_line.within(border)) or (length_of_way == 0 and way_to_line.touches(border)):
+            current_shortest_way = length_of_way
+            possible_line = line_coord
+            way_nr = i
+        if (length_of_rev_way < current_shortest_way and way_to_line_rev.within(border)) or (length_of_rev_way == 0 and way_to_line_rev.touches(border)):
+            current_shortest_way = length_of_rev_way
+            possible_line = line_coord_rev
+            way_nr = i
+        #No direct way for standar or reverse line, check A* distance
+        if (not way_to_line.within(border) or not way_to_line_rev.within(border)):
+            way_coord, length_of_astar_way, reverse_line = Lines_check_astar_distance(border, way, angle, route, current_map.perimeter_points)
+            if (length_of_astar_way != None and length_of_astar_way < current_shortest_way) or (length_of_astar_way != None and way_nr == None):
+                current_shortest_way = length_of_astar_way
+                if reverse_line:
+                    way_coord.extend(line_coord_rev)
+                    possible_line = way_coord
+                else:
+                    way_coord.extend(line_coord)
+                    possible_line = way_coord
+                way_nr = i
+    if way_nr != None:
+        route_tmp = possible_line
+    return route_tmp, way_nr, current_shortest_way
+from shapely import affinity
+def Lines_check_astar_distance(border: Polygon, possible_start: list, angle: int, route: list, perimeter_points) -> list:
+    route_tmp = []
+    reverse_line = None
+    #Create start point  
+    astar_start_tmp = Point((route[-1]))
+    astar_start_tmp = affinity.rotate(astar_start_tmp, angle, origin=(0, 0))
+    astar_start_tmp = nearest_points(astar_start_tmp, perimeter_points)
+    astar_start = list(astar_start_tmp[1].coords)
+    #Create end points
+    #Create first end point
+    coords_tmp1 = possible_start[0]
+    coords_tmp1 = Point((coords_tmp1))
+    coords_tmp1 = affinity.rotate(coords_tmp1, angle, origin=(0, 0))
+    astar_end_tmp1 = nearest_points(perimeter_points, coords_tmp1)
+    astar_end1 = list(astar_end_tmp1[0].coords)
+    #Create second end point
+    coords_tmp2 = possible_start[1]
+    coords_tmp2 = Point((coords_tmp2))
+    coords_tmp2 = affinity.rotate(coords_tmp2, angle, origin=(0, 0))
+    astar_end_tmp2 = nearest_points(perimeter_points, coords_tmp2)
+    astar_end2 = list(astar_end_tmp2[0].coords)
+    try:
+        astar_path1 = nx.astar_path(current_map.astar_graph, astar_start[0], astar_end1[0], heuristic=None, weight='weight')
+        astar_path1 = turn_coords(astar_path1, -angle)
+        way1 = [route[-1]]
+        way1.extend(astar_path1)
+        way1.extend([possible_start[0]])
+        way1 = LineString((way1))
+        way1_length = way1.length
+        if not way1.within(border):
+            way1 = None
+
+        astar_path2 = nx.astar_path(current_map.astar_graph, astar_start[0], astar_end2[0], heuristic=None, weight='weight')
+        astar_path2 = turn_coords(astar_path2, -angle)
+        way2 = [route[-1]]
+        way2.extend(astar_path2)
+        way2.extend([possible_start[1]])
+        way2 = LineString((way2))
+        way2_length = way2.length
+        if not way2.within(border):
+            way2 = None
+    except Exception as e:
+        logger.warning('A* pathfinder delivered unexpexted result')
+        logger.debug(str(e))
+        return None, None, None
+    if (way1 != None and way2 != None and way1_length <= way2_length) or (way1 != None and way2 == None):
+        current_shortest_way_length = way1_length
+        route_tmp = astar_path1
+        reverse_line = False
+    elif (way1 != None and way2 != None and way1_length > way2_length) or (way2 != None and way1 == None):
+        current_shortest_way_length = way2_length
+        route_tmp = astar_path2
+        reverse_line = True
+    else:
+        return None, None, None
+    return route_tmp, current_shortest_way_length, reverse_line
+def Lines_calcroute(areatomow, border, line_mask, edges_pol, route, parameters, angle):
+    print('Coverage path planner (lines): Start coverage path planner')
+    print(parameters)
+
+    pathfinder.create()
+    pathfinder.angle = angle
+
+    if len(route) == 1:
+        print('Coverage path planner (lines): Route is just start point, check if the point within perimeter')
+        if not Point((route[-1])).within(border) and not Point((route[-1])).touches(border):
+            print('Coverage path planner (lines): Rover is outside perimeter, interpolate to the border')
+            route_tmp = border.exterior.coords
+            route = [min(route_tmp, key=lambda coord: (coord[0]-route[-1][0])**2 + (coord[1]-route[-1][1])**2)]
+            print('Coverage path planner (lines): New start point: '+str(route))
+
+    ways_to_go = pd.DataFrame()
+    perimeter_points = current_map.perimeter_points
+
+    tosimplify = False
+    if parameters.distancetoborder == 0:
+        print('Distance to border selected to 0, increase boundary')
+        border = border.buffer(0.05, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
+    else:
+        print('Distance to border is not equal to 0, use original boundary')
+    #Extract y-coordinate and sort data
+    line_mask_coords = []
+    #Check for data type MultiLineString or GeometryCollection as expected?
+    print('Extract lines coordinates and sort data')
+    try: 
+        for line in line_mask.geoms:
+            #Check if line is a point and create a virtual line
+            if len(list(line.coords)) == 1:
+                print('At least one line is a point, create a virtual line, and set simplify flag')
+                tosimplify = True
+                coords = list(line.coords)
+                coords.extend(coords)
+                line_mask_coords.append(coords)
+            #Check if line is a line (as expected)
+            else:
+                line_mask_coords.append(list(line.coords))
+    #There is no MultiLineString and no GeometryCollection. Selection to small?
+    except:
+        print('Line mask is no MultiLineString. Selection to small?')
+        if not line_mask.is_empty:
+            line = line_mask
+            #Check if line is a point and create a virtual line
+            if len(list(line.coords)) == 1:
+                print('At least one line is a point, create a virtual line, and set simplify flag')
+                tosimplify = True
+                coords = list(line.coords)
+                coords.extend(coords)
+                line_mask_coords.append(coords)
+             #Check if line is a line (as expected)
+            else:
+                line_mask_coords.append(list(line.coords))
+        #Exctraction not possible
+        else:
+            print('Extraction not possible. Line mask is empty')
+            line_mask_coords = []
+    #Sort coordinates and create new MultiLineString
+    line_mask_coords.sort(key=lambda x: x[0][1])
+    result_lines = MultiLineString(line_mask_coords)
+    print('Lines to calculate: '+str(len(result_lines.geoms)))
+
+    #Add additional informations to edges to cut about y-position on the map
+    print('Sort border cuts and exclusion cuts')
+    print('Figures to sort: '+str(len(edges_pol)))
+    border_bounds = border.bounds
+    print('Border bounds: '+str(border_bounds))
+    for i, pol in enumerate(edges_pol):
+        bounds = pol.bounds
+        print('Excl/borger to cut bounds: '+str(bounds))
+        level_min = round((bounds[1] - border_bounds[1])/parameters.width)
+        level_max = round((bounds[3]-border_bounds[1])/parameters.width)
+        print('Add levels to excl/border to cut. Min: '+str(level_min)+' Max: '+str(level_max))
+        edge = pd.DataFrame({'name': 'edge'+str(i),'shapely': pol, 'level_min': level_min, 'level_max': level_max, 'coords': [list(pol.exterior.coords)], 'type': 'edge', 'gone': False, 'take into account': True})
+        ways_to_go = pd.concat([ways_to_go, edge], ignore_index=True)
+    
+    #Add additionl informations to the lines about y-position on the map
+    print('Sort lines to cut')
+    lines_to_go = []
+    line_level = 0
+    current_level = None
+    if not result_lines.is_empty:
+        coord = list(result_lines.geoms[0].coords)
+        coord_y_old = coord[0][1]
+        for i in range(len(result_lines.geoms)):
+            coord = list(result_lines.geoms[i].coords)
+            if coord[0][1] > coord_y_old:
+                line_level += 1
+            line = pd.DataFrame({'name': 'area'+str(i),'shapely': result_lines.geoms[i], 'level_min': line_level, 'level_max': line_level, 'coords': [coord], 'type': 'area', 'gone': False, 'take into account': True})
+            ways_to_go = pd.concat([ways_to_go, line], ignore_index=True)
+            coord_y_old = coord[0][1]
+    else:
+        print('No lines to sort found')
+        line = pd.DataFrame({'name': 'area1','shapely': LineString(), 'level_min': None, 'level_max': None, 'coords': [None], 'type': 'area', 'gone': True, 'take into account': True})
+        ways_to_go = pd.concat([ways_to_go, line], ignore_index= True)
+
+    #Starting coverage path planner
+    print('Coverage path planner (calc lines): Starting loop')
+    astar_path = []
+    astar_last_way = []
+    while True:
+        gone_way = None
+        gone_way_edge = None
+        ways_to_go_filtered = ways_to_go[ways_to_go['gone'] == False]
+        if ways_to_go_filtered.empty:
+            print('Coverage path planner (calc lines): No more way to calculate, ending loop')
+            break
+
+        #Check for ways to lines
+        print('Check for prio lines')
+        route_line_way, gone_way, length_to_line, possible_start = Lines_check_prio_lines(ways_to_go, border, current_level, route, angle)
+        if gone_way != None:
+            print('Found way to line, distance: '+str(length_to_line))
+
+        #Check for possible ways to edges
+        print('Check for edges to cut in range')
+        #First call or after pathfinder, current_level = None
+        if current_level == None:
+            ways_edge = ways_to_go[(ways_to_go['type'] == 'edge') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True)]
+        else:
+            ways_edge = ways_to_go[(ways_to_go['type'] == 'edge') & (ways_to_go['gone'] == False) & (ways_to_go['take into account'] == True) & (ways_to_go['level_min'] <= current_level) & (ways_to_go['level_max'] >= current_level)]
+        if not ways_edge.empty:
+            possible_edges = ways_edge.reset_index(drop=True)
+            route_edge_way, gone_way_edge, length_to_edge = shortest_path_to_exclusion(border, possible_edges['shapely'].to_list(), route)
+            if gone_way_edge != None:
+                print('Found edge(s) to cut in range, distance: '+str(length_to_edge))
+            else:
+                print('No direct way to a edge found')
+        else:
+            print('No edges in range found')
+        
+        #Decide for a shortest way
+        if gone_way != None and gone_way_edge != None:
+            if length_to_line < 0.5*length_to_edge:
+                index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==possible_start[gone_way])].index.array[0]
+                ways_to_go.at[index, 'gone'] = True
+                current_level = ways_to_go.at[index, 'level_min']
+                print('Take way to a line, current level: '+str(ways_to_go.at[index, 'level_min'])+' Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+                astar_last_way = []
+                route.extend(route_line_way)   
+                # Progress-bar data
+                current_map.total_progress = len(ways_to_go)
+                current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+            else:
+                index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_edges.loc[gone_way_edge, 'shapely'].exterior.coords))].index.array[0] 
+                ways_to_go.at[index, 'gone'] = True
+                print('Take way to a edge, current level: '+str(ways_to_go.at[index, 'level_min'])+' Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+                astar_last_way = []
+                route.extend(route_edge_way)
+                # Progress-bar data
+                current_map.total_progress = len(ways_to_go)
+                current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        elif gone_way != None:
+            index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==possible_start[gone_way])].index.array[0]
+            ways_to_go.at[index, 'gone'] = True
+            current_level = ways_to_go.at[index, 'level_min']
+            print('Take way to a line, current level: '+str(ways_to_go.at[index, 'level_min'])+' Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+            astar_last_way = []
+            route.extend(route_line_way) 
+            # Progress-bar data
+            current_map.total_progress = len(ways_to_go)
+            current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        elif gone_way_edge != None:
+            index = ways_to_go[ways_to_go['coords'].apply(lambda x: x==list(possible_edges.loc[gone_way_edge, 'shapely'].exterior.coords))].index.array[0] 
+            ways_to_go.at[index, 'gone'] = True
+            print('Take way to a edge, current level: '+str(ways_to_go.at[index, 'level_min'])+' Finished: '+str(len(ways_to_go[ways_to_go['gone']==True]))+'/'+str(len(ways_to_go)))  
+            astar_last_way = []
+            route.extend(route_edge_way)
+            # Progress-bar data
+            current_map.total_progress = len(ways_to_go)
+            current_map.calculated_progress = len(ways_to_go[ways_to_go['gone']==True])
+        else:
+            print('No point for start over direct way found. Starting A* pathfinder')
+            possible_goals = ways_to_go[ways_to_go['gone'] == False]
+            for i in range(len(possible_goals)):
+                coords = possible_goals.iloc[i]['coords']
+                goal = nearest_points(Point(route[-1]), MultiPoint(coords))
+                goal = list(goal[1].coords)
+                route_astar = pathfinder.find_way(route[-1], goal)
+                if route_astar != []:
+                    index = possible_goals.index.values[i]
+                    route.extend(route_astar)
+                    current_level = None
+                    break
+            if route_astar == []:
+                print('Coverage patha planner (lines): Could not finish calculation')
+                break
+        
+    route_shapely = LineString(route)
+    return route_shapely
+
+def calc(selected_perimeter: Polygon, parameters: PathPlannerCfg, start_pos: list) -> list:
+    import math
+    import random
+    
+
+    if selected_perimeter.is_empty or (not parameters.mowarea and parameters.mowborder==0 and not parameters.mowexclusion):
+        print(f"Coverage path planner parameters are not valid. Calculation aborted.")
+        print(parameters)
+        return []
+    print('Backend: Planning route:')
+    print(parameters)
+    print('Rover start position: '+str(start_pos))
+    start_pos = Point(start_pos)
+    #check if random angle
+    if parameters.angle == None or math.isnan(float(parameters.angle)):
+        angle = random.randrange(start=359) 
+        print(f'Coverage path planner uses random angle: {angle}Deg')
+    else:
+        angle = parameters.angle
+
+    if parameters.pattern == 'lines' or parameters.pattern == 'squares':
+        start_pos = map.turn(start_pos, angle)
+        selected_area_turned = map.turn(selected_perimeter, angle)
+        #border = map.turn(current_map.perimeter_polygon, angle)
+        border = map.turn(selected_perimeter, angle)
+
+        area_to_mow = map.areatomow(selected_area_turned, parameters.distancetoborder, parameters.width)
+        route, edge_polygons = Cutedge_calcroute(selected_area_turned, parameters, list(start_pos.coords))
+        if parameters.mowarea:
+            line_mask = map.linemask(area_to_mow, parameters.width)
+        else:
+            line_mask = MultiLineString()
+        route = Lines_calcroute(area_to_mow, border, line_mask, edge_polygons, route, parameters, angle)
+        route = map.turn(route, -angle)
+        route = list(route.coords)
+        # Clear progress bar
+        #if parameters.pattern == 'lines' or (parameters.pattern == 'squares' and parameters.mowarea != True):
+            
+            #current_map.total_progress = current_map.calculated_progress = 0
+
+    if parameters.pattern == 'squares' and parameters.mowarea == True:
+        last_coord = route[-1]
+        last_coord = Point(last_coord)
+        last_coord = map.turn(last_coord, angle+90)
+        selected_area_turned = map.turn(selected_perimeter, angle+90)
+        #border = map.turn(current_map.perimeter_polygon, angle)
+        border = map.turn(selected_perimeter, angle)
+        area_to_mow = map.areatomow(selected_area_turned, parameters.distancetoborder, parameters.width)
+        if parameters.mowarea:
+            line_mask = map.linemask(area_to_mow, parameters.width)
+        else:
+            line_mask = MultiLineString()
+        route2 = Lines_calcroute(area_to_mow, border, line_mask, [], list(last_coord.coords), parameters, angle+90)
+        route2 = map.turn(route2, -angle-90)
+        route.extend(list(route2.coords))
+        # Clear progress bar
+        #current_map.total_progress = current_map.calculated_progress = 0
+    
+    if parameters.pattern == 'rings':
+        border = selected_perimeter
+        area_to_mow = map.areatomow(selected_perimeter, parameters.distancetoborder, parameters.width)
+        route, edge_polygons = Cutedge_calcroute(selected_perimeter, parameters, list(start_pos.coords))
+        route = Ring_calcroute(area_to_mow, border, route, parameters)
+        # Clear progress bar
+        #current_map.total_progress = current_map.calculated_progress = 0
+    print(str(route))
+    return route
 
 NewMapsPage = tk.Frame(fen1)
 NewMapsPage.place(x=0, y=0, height=400, width=800)
@@ -3043,6 +3828,8 @@ def BtnSaveMap_click():
         a, b = polygon2.exterior.xy
         print(len(a),len(mymower.newPerimeter))
         axLiveMapNMP.plot(a,b,color='g', linewidth=0.4,picker=True,marker='.')
+        
+        
 
 
 BtnRecordMapStop = tk.Button(NewMapsPage, command=BtnRecordMapStop_click, text="Stop Record")
@@ -3515,7 +4302,46 @@ def showFullMapTab():  # tab 0 show the full map
         polygon2=new_polygon.simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
         a, b = polygon2.exterior.xy
         print(len(a),len(perimeterArray))
-        ax[0].plot(a,b,color='g', linewidth=0.4,picker=True,marker='.')
+
+        
+
+
+        parameters=PathPlannerCfg()
+        parameters.mowarea=True
+        parameters.mowborder=False
+        parameters.mowexclusion=False
+        start_pos=[0.0, 0.0]
+        polygon4=calc(polygon2, parameters, start_pos)
+        
+        print("ttttttttttttttttttttttt",len(polygon4))
+       
+
+
+
+        for idx2 in range(int(len(polygon4))):
+
+            x[idx2] = polygon4[idx2][0]
+            y[idx2] = polygon4[idx2][1]
+
+
+
+
+
+
+
+        ax[0].plot(x,y,color='g', linewidth=0.4,picker=True,marker='.')
+
+
+
+
+
+
+
+
+
+
+
+
         toolbar = VerticalNavigationToolbar2Tk(canvas[0], MapsPage)
         toolbar.place(x=5, y=40)
     canvas[0].draw()
