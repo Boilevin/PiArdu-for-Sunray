@@ -3204,8 +3204,10 @@ def Ring_calcroute(areatomow, border, route, parameters):
             print('Coverage path planner (rings): Calculation done')
             break
         if areatomow_tmp.geom_type == 'Polygon':
+            print("area to mow  is single polygon")
             polygons.extend(Ring_create_polygons(areatomow_tmp, -parameters.width))
         elif areatomow_tmp.geom_type == 'MultiPolygon':
+            print("area to mow  is multipolygon")
             polygons.extend(Ring_split_multipolygons(areatomow_tmp, -parameters.width))
         else:
             print('Unknown figure')
@@ -3716,9 +3718,13 @@ def calc(selected_perimeter: Polygon, parameters: PathPlannerCfg, start_pos: lis
         border = map.turn(selected_perimeter, angle)
 
         area_to_mow = map.areatomow(selected_area_turned, parameters.distancetoborder, parameters.width)
+       
         route, edge_polygons = Cutedge_calcroute(selected_area_turned, parameters, list(start_pos.coords))
         if parameters.mowarea:
             line_mask = map.linemask(area_to_mow, parameters.width)
+            x, y = line_mask.exterior.xy
+            ax[4].plot(x,y,color='blue', linewidth=0.4,picker=True,marker='.')
+
         else:
             line_mask = MultiLineString()
         route = Lines_calcroute(area_to_mow, border, line_mask, edge_polygons, route, parameters, angle)
@@ -3754,7 +3760,7 @@ def calc(selected_perimeter: Polygon, parameters: PathPlannerCfg, start_pos: lis
         route = Ring_calcroute(area_to_mow, border, route, parameters)
         # Clear progress bar
         #current_map.total_progress = current_map.calculated_progress = 0
-    print(str(route))
+    #print(str(route))
     return route
 
 NewMapsPage = tk.Frame(fen1)
@@ -3823,8 +3829,9 @@ def BtnSaveMap_click():
         print(explain_validity(polygon1))
         print("valid  polygon init " ,polygon1.is_valid)
         new_polygon = polygon1.buffer(0)
+        #border = border.buffer(0.05, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
         print("valid  polygon2 " ,new_polygon.is_valid)
-        polygon2=new_polygon.simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
+        polygon2=new_polygon.geoms[0].simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
         a, b = polygon2.exterior.xy
         print(len(a),len(mymower.newPerimeter))
         axLiveMapNMP.plot(a,b,color='g', linewidth=0.4,picker=True,marker='.')
@@ -4267,69 +4274,58 @@ def showFullMapTab():  # tab 0 show the full map
 
     ax[0].clear()
      # draw newPerimeter
-
+    toolbar = VerticalNavigationToolbar2Tk(canvas[0], MapsPage)
+    toolbar.place(x=5, y=40)
     fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + "/test.npy"
     if (os.path.exists(fileName)):
         perimeterArray = np.load(fileName)
+
         polygon1 = Polygon(np.squeeze(perimeterArray))
         from shapely.validation import explain_validity
-        print(explain_validity(polygon1))
-        print("valid  polygon init " ,polygon1.is_valid)
-        new_polygon = polygon1.buffer(0)
-        print("valid  polygon2 " ,new_polygon.is_valid)
-
-        
-        
+       
         
 
         mymower.polygon[mapNr] = polygon1  # keep the polygon for later search
         #mymower.totalMowingArea = mymower.totalMowingArea + int(polygon1.area)  # print(polygon1.centroid.coords[0][0]) center of polygon
                 # draw perimeter
-        x = np.zeros(int(len(perimeterArray) + 1))
-        y = np.zeros(int(len(perimeterArray) + 1))
-        for idx1 in range(int(len(perimeterArray))):
-
-            x[idx1] = perimeterArray[idx1][0]
-            y[idx1] = perimeterArray[idx1][1]
-            # close the drawing
-        x[idx1 + 1] = perimeterArray[0][0]
-        y[idx1 + 1] = perimeterArray[0][1]
-        
+        x, y = polygon1.exterior.xy
         ax[0].plot(x, y, color='r', linewidth=0.4,picker=True,marker='.')  # ,markersize=2)ttom=0)
 
-
-
+        print(explain_validity(polygon1))
+        print("valid  polygon init " ,polygon1.is_valid)
+        print(type(polygon1))
+        new_polygon = polygon1.buffer(0) #try to remove err on polygon
+        print(type(new_polygon))
+        print("valid  polygon2 " ,new_polygon.is_valid)
         polygon2=new_polygon.simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
-        a, b = polygon2.exterior.xy
-        print(len(a),len(perimeterArray))
-
+        print("poly 2 type " ,type(polygon2))
+        #print(polygon2)
+       
+        x, y = polygon2.exterior.xy
+        ax[1].plot(x,y,color='g', linewidth=0.4,picker=True,marker='.')
         
-
-
+        
         parameters=PathPlannerCfg()
         parameters.mowarea=True
         parameters.mowborder=False
         parameters.mowexclusion=False
         start_pos=[0.0, 0.0]
-        polygon4=calc(polygon2, parameters, start_pos)
+
+        polygon4_list=calc(polygon2, parameters, start_pos)
+        polygon4 = Polygon(np.squeeze(polygon4_list))
         
-        print("ttttttttttttttttttttttt",len(polygon4))
-       
+        #x, y = polygon4.geoms[0].exterior.xy
 
+        x = np.zeros(int(len(polygon4_list) + 1))
+        y = np.zeros(int(len(polygon4_list) + 1))
+        for idx2 in range(int(len(polygon4_list))):
 
+            x[idx2] = polygon4_list[idx2][0]
+            y[idx2] = polygon4_list[idx2][1]
+        ax[2].plot(x,y,color='g', linewidth=0.4,picker=True,marker='.')
 
-        for idx2 in range(int(len(polygon4))):
-
-            x[idx2] = polygon4[idx2][0]
-            y[idx2] = polygon4[idx2][1]
-
-
-
-
-
-
-
-        ax[0].plot(x,y,color='g', linewidth=0.4,picker=True,marker='.')
+        x, y = polygon4.exterior.xy
+        ax[3].plot(x,y,color='black', linewidth=0.4,picker=True,marker='.')
 
 
 
@@ -4340,10 +4336,7 @@ def showFullMapTab():  # tab 0 show the full map
 
 
 
-
-
-        toolbar = VerticalNavigationToolbar2Tk(canvas[0], MapsPage)
-        toolbar.place(x=5, y=40)
+        
     canvas[0].draw()
 
     MapsInfoline1.configure(text=" Total Area " + str(mymower.totalMowingArea) + " m2")
@@ -4409,7 +4402,7 @@ def onTabChange(event):
         MapsInfoline1.configure(text=Infolinetxt)
         InfoHouseNrtxt.configure(text=mymower.House)
         InfoHouseNrtxt.update()
-        mapPagePlot(1,1,1,1)
+        #mapPagePlot(1,1,1,1)
         toolbar = VerticalNavigationToolbar2Tk(canvas[mymower.mapSelected], MapsPage)
         toolbar.place(x=5, y=40)
         

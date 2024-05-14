@@ -238,10 +238,10 @@ class RoverCfg:
 class PathPlannerCfg:
     pattern: str = 'lines'
     width: float = 0.18
-    angle: int = 0
+    angle: int = 30
     distancetoborder: int = 1
     mowarea: bool = True
-    mowborder: int = 1
+    mowborder: int = 3
     mowexclusion: bool = True
     mowborderccw: bool = True
 
