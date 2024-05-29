@@ -3722,8 +3722,10 @@ def calc(selected_perimeter: Polygon, parameters: PathPlannerCfg, start_pos: lis
         route, edge_polygons = Cutedge_calcroute(selected_area_turned, parameters, list(start_pos.coords))
         if parameters.mowarea:
             line_mask = map.linemask(area_to_mow, parameters.width)
-            x, y = line_mask.exterior.xy
-            ax[4].plot(x,y,color='blue', linewidth=0.4,picker=True,marker='.')
+            print(line_mask)
+            
+           # x, y = line_mask.exterior.xy
+           # ax[4].plot(x,y,color='blue', linewidth=0.4,picker=True,marker='.')
 
         else:
             line_mask = MultiLineString()
@@ -4272,6 +4274,25 @@ def showFullMapTab():  # tab 0 show the full map
 
 
 
+  
+
+    #showTestMap(mapNr)
+
+
+
+
+
+
+
+        
+    canvas[0].draw()
+
+    MapsInfoline1.configure(text=" Total Area " + str(mymower.totalMowingArea) + " m2")
+    #plt.show()
+
+##    InfoHouseNrtxt.configure(text=mymower.House)
+##    InfoHouseNrtxt.update()
+def showTestMap(mapNr):
     ax[0].clear()
      # draw newPerimeter
     toolbar = VerticalNavigationToolbar2Tk(canvas[0], MapsPage)
@@ -4329,21 +4350,6 @@ def showFullMapTab():  # tab 0 show the full map
 
 
 
-
-
-
-
-
-
-
-        
-    canvas[0].draw()
-
-    MapsInfoline1.configure(text=" Total Area " + str(mymower.totalMowingArea) + " m2")
-    #plt.show()
-
-##    InfoHouseNrtxt.configure(text=mymower.House)
-##    InfoHouseNrtxt.update()
 def ButtonEditMap_click():
    
     if (option.get()=='Peri'):
@@ -4402,7 +4408,7 @@ def onTabChange(event):
         MapsInfoline1.configure(text=Infolinetxt)
         InfoHouseNrtxt.configure(text=mymower.House)
         InfoHouseNrtxt.update()
-        #mapPagePlot(1,1,1,1)
+        mapPagePlot(1,1,1,1)
         toolbar = VerticalNavigationToolbar2Tk(canvas[mymower.mapSelected], MapsPage)
         toolbar.place(x=5, y=40)
         
