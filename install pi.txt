@@ -1,6 +1,20 @@
 https://github.com/Qengineering/RPi-Bullseye-DNN-image
 
 
+git clone https://github.com/Boilevin/PiArdu-for-Sunray.git
+sudo apt-get install idle3
 sudo pip3 install matplotlib
 sudo apt-get install python3-pil.imagetk
 sudo pip3 install shapely
+sudo pip3 install opencv-python
+sudo pip3 install mpl_interactions
+
+From fresh install of Bookworm
+sudo rm /usr/lib/python3.11/EXTERNALLY-MANAGED
+sudo pip3 install opencv-python
+sudo pip3 install mediapipe
+
+sudo apt-get install python3-pil.imagetk
+sudo pip3 install mpl_interactions
+sudo pip3 install shapely
+
