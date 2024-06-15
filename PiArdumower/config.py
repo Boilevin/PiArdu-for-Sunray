@@ -79,13 +79,13 @@ if (os.name=='posix'):
 
 if (os.name=='nt'):
     print('Windows Platform')
-    myComPort = 'COM3'
+    myComPort = 'COM8'
     myFrameWidth = 800
     myFrameHeight = 430
     myBaudRate = 115200
     myOS="Windows"
     # If PCB1.3 is used with DUE normalu always true
-    DueConnectedOnPi = False
+    DueConnectedOnPi = True
 
     # Old code possible to directly connect a GPS to PI for tracking only
     GpsConnectedOnPi = False
