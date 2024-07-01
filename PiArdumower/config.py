@@ -53,7 +53,8 @@ if (os.name=='posix'):
 
  #Setting for Vision
     useVision=True
-    visionDetectMinScore = 78
+    visionDetectMinScore = 0.60
+    vision_framerate = 5
 
     max_map_inUse = 10
 
@@ -128,8 +129,8 @@ if (os.name=='nt'):
 
     # Setting for Vision
     useVision = False
-    visionDetectMinScore = 78
-
+    visionDetectMinScore = 0.78
+    vision_framerate = 5
     max_map_inUse = 10
 
     
