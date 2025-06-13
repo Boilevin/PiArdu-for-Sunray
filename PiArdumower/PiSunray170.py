@@ -12,6 +12,21 @@ import time
 import datetime as dt
 
 
+
+import socket
+import serial
+import threading
+
+
+# Paramètres du LC29HEA
+LC29HEA_PORT = 'COM3'  # adapte selon ton port série
+
+LC29HEA_BAUD = 460800
+
+# Paramètres du flux RTCM
+RTCM_IP = '10.0.0.185'
+RTCM_UDP_PORT = 5000
+
 #from backend.map import map
 #import networkx as nx
 
@@ -126,6 +141,45 @@ from robot import *
 
 if myOS == "Linux":
     sys.path.insert(0, "/home/pi/Documents/PiArdumower")  # add to avoid KST plot error on path
+    LC29HEA_PORT = '/dev/ttyAMA1'  # adapte selon ton port série sur le Pi (ex: /dev/ttyUSB0)
+
+
+
+
+# --- CONFIGURATION ---
+
+def rtcm_udp_to_lc29hea():
+    global rtcm_thread_running
+    try:
+        ser = serial.Serial(LC29HEA_PORT, LC29HEA_BAUD, timeout=1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(('', RTCM_UDP_PORT))
+        print(f"En écoute UDP sur le port {RTCM_UDP_PORT}")
+
+        def read_lc29hea():
+            while rtcm_thread_running:
+                line = ser.readline()
+                if line:
+                    try:
+                        txt = line.decode(errors='ignore')
+                        print("LC29HEA:", txt.strip())
+                        try:
+                            txtConsoleRecu.insert('1.0', txt)
+                        except:
+                            pass
+                    except Exception as e:
+                        print("Erreur décodage NMEA:", e)
+        threading.Thread(target=read_lc29hea, daemon=True).start()
+
+        while rtcm_thread_running:
+            data, addr = sock.recvfrom(1024)
+            ser.write(data)
+    except Exception as e:
+        print("Erreur RTCM/LC29HEA:", e)
+    finally:
+        rtcm_thread_running = False
+
+
 
 
 def ButtonFlashDue_click():
@@ -905,6 +959,7 @@ def decode_AT_message(message):  # decode sunray console message
         mymower.dockPointsCount = int(list_recu[3])
         mymower.mowPointsCount = int(list_recu[4])
         mymower.freePointsCount = int(list_recu[5])
+        mymower.nbTotalExclusion = int(list_recu[6])
         message = "AT+RNX"
         message = str(message)
         message = message + '\r'
@@ -1354,7 +1409,6 @@ def refreshImuSettingPage():
 ##        tk_timerStartNrLane[i].set(myRobot.TimerstartNrLane[i])
 ##        tk_timerStartRollDir[i].set(myRobot.TimerstartRollDir[i])
 ##        tk_timerStartLaneMaxlengh[i].set(myRobot.TimerstartLaneMaxlengh[i])
-##        tk_timerStartArea[i].set(myRobot.TimerstartArea[i])
 ##
 ##        for j in range(7):
 ##            result=[bool((myRobot.TimerdaysOfWeek[i]) & (1<<n)) for n in range(8)]
@@ -2539,8 +2593,7 @@ def initialPlotAutoPageFullHouse():
     if (mymower.noMapOnMower) :
         return
     mymower.mapNrList.clear
-    axLiveMap.clear()
-
+    ax[0].clear()
     fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + "/crcMapList.npy"
     mymower.totalMowingArea = 0
     if (os.path.exists(fileName)):
@@ -2548,19 +2601,13 @@ def initialPlotAutoPageFullHouse():
         # print(crcMapList)
         for idx in range(int(len(crcMapList))):
             mapNr = int(crcMapList[idx, 0])
-            mymower.mapNrList.append(mapNr)
+
             fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                        "/maps" + "{0:0>2}".format(mapNr) + "/PERIMETER.npy"
             if (os.path.exists(fileName)):
                 perimeterArray = np.load(fileName)
                 polygon1 = Polygon(np.squeeze(perimeterArray))
-
                 mymower.polygon[mapNr] = polygon1  # keep the polygon for later search
-
-                # pp3 = plt.Polygon(np.squeeze(perimeterArray))
-                # axLiveMap.add_patch(pp3)
-
-                # print(str(mapNr)+ " " +str(int(polygon1.area)))
                 mymower.totalMowingArea = mymower.totalMowingArea + int(
                     polygon1.area)  # print(polygon1.centroid.coords[0][0]) center of polygon
                 # draw perimeter
@@ -2569,12 +2616,14 @@ def initialPlotAutoPageFullHouse():
                 for idx1 in range(int(len(perimeterArray))):
                     x[idx1] = perimeterArray[idx1][0]
                     y[idx1] = perimeterArray[idx1][1]
+                    if showdot:
+                        ax[0].text(x[idx1], y[idx1], idx1, fontsize=8)
                     # close the drawing
                 x[idx1 + 1] = perimeterArray[0][0]
                 y[idx1 + 1] = perimeterArray[0][1]
-                axLiveMap.text(polygon1.centroid.coords[0][0], polygon1.centroid.coords[0][1], mapNr, fontsize=8,
-                               bbox=dict(facecolor='yellow', alpha=0.4))
-                axLiveMap.plot(x, y, color='r', linewidth=0.4)  # ,marker='.',markersize=2)
+                ax[0].text(polygon1.centroid.coords[0][0], polygon1.centroid.coords[0][1], mapNr, fontsize=8,
+                           bbox=dict(facecolor='yellow', alpha=0.4))
+                ax[0].plot(x, y, color='r', linewidth=0.4, picker=True)  # ,marker='.',markersize=2)
 
             else:
                 print("no perimeter data for this map " + str(mapNr))
@@ -2591,8 +2640,8 @@ def initialPlotAutoPageFullHouse():
                         x[ip] = mowPts[ip][0]
                         y[ip] = mowPts[ip][1]
 
-                    axLiveMap.plot(x, y, color='black', linewidth=0.2)
-
+                    ax[0].plot(x, y, color='g', linewidth=0.2)
+                # canvas[mymower.mapSelected].draw()
                 else:
                     messagebox.showwarning('warning', "No mowing points for this map ?????")
         textHouseNr.config(text=mymower.House)
@@ -2606,7 +2655,7 @@ def initialPlotAutoPageFullHouse():
         print("error no crcMapList.npy for this house")
 
     
-    canvasLiveMap.draw()
+    canvas[0].draw()
 
     # print(mymower.totalMowingArea)
 
@@ -2712,12 +2761,12 @@ AutoSliderStop.bind("<ButtonRelease-1>", updatesAutoSliderStop)
 AutoPercentLabel = tk.Label(AutoPage, text='Start  Stop', fg='green')
 AutoPercentLabel.place(x=445, y=155)
 
-RdBtn_Resume = tk.Checkbutton(AutoPage, text="Resume last session", font=("Arial", 10), variable=tk_ResumeMowing,command=updatesRdBtn_Resume)
+RdBtn_Resume = tk.Checkbutton(AutoPage, text="Resume last session", font=("Arial", 10), fg='red', variable=tk_ResumeMowing,command=updatesRdBtn_Resume)
 RdBtn_Resume.place(x=515, y=290, width=150, height=20)
 #RdBtn_Resume.bind("<ButtonRelease-1>", updatesRdBtn_Resume)
 
 
-RdBtn_HouseView = tk.Checkbutton(AutoPage, text="House view", font=("Arial", 10), variable=tk_HouseView,command=updatesRdBtn_HouseView)
+RdBtn_HouseView = tk.Checkbutton(AutoPage, text="House view", font=("Arial", 10), fg='red', variable=tk_HouseView,command=updatesRdBtn_HouseView)
 RdBtn_HouseView.place(x=5, y=335, width=90, height=15)
 #RdBtn_HouseView.bind("<ButtonRelease-1>", updatesRdBtn_HouseView)
 
@@ -2737,559 +2786,541 @@ ButtonStopAllAuto.place(x=680, y=10, width=100, height=130)
 
 
 
-ButtonBackHome = tk.Button(AutoPage, image=imgBack, command=ButtonBackToMain_click)
+ButtonBackHome = tk.Button(TabSetting, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
-"""**************************THE MANUAL PAGE  **********************************************"""
-
-def ButtonJoystickON_click():
-    subprocess.call(["rfkill", "unblock", "bluetooth"])
-    print("BlueTooth Start")
-    returnval = messagebox.askyesno('Info', "Power ON the joystick now and wait until the led is fix")
-    if returnval:
-        try:
-            # if not pygame.joystick.get_init():
-            # print(myps4.get_init())
-            myps4.init()
-            myps4.listen()
-            mymower.useJoystick = True
-            # print(myps4.get_init())
-        except:
-            subprocess.call(["rfkill", "block", "bluetooth"])
-            returnval = messagebox.showerror('Error',
-                                             "The joystick is not found: Please try to connect under PI GUI First")
+"""************* Mow motor setting *****************************"""
 
 
-def ButtonJoystickOFF_click():
-    subprocess.call(["rfkill", "block", "bluetooth"])
-    print("BlueTooth Stop")
-    mymower.useJoystick = False
-    messagebox.showinfo('Info', "Bluetooth and joystick are OFF")
-
-
-def buttonBlade_stop_click():
-    message = "AT+C,0,0,-1,-1,-1,-1,-1,-1"
+def updateslidermotorMowSpeedMaxPwm(event):
+    message = "AT+CT,70," + str(slidermotorMowSpeedMaxPwm.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def buttonBlade_start_click():
-    message = "AT+C,1,0,-1,-1,-1,-1,-1,-1"
+def updateslidermotorMowSpeedMinPwm(event):
+    message = "AT+CT,71," + str(slidermotorMowSpeedMinPwm.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonForward_click():
-    ButtonReverse.configure(state='disabled')
-    message = "AT+M," + str(manualSpeedSlider.get()) + ",0,0"
+def updateslidermotorMowfaultcurrent(event):
+    message = "AT+CT,72," + str(slidermotorMowfaultcurrent.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonForwardLeft_click():
-    ButtonReverse.configure(state='disabled')
-    message = "AT+M," + str(manualSpeedSlider.get()) + "," + str(manualSpeedSlider.get()) + ",0"
+def updateslidermotorMowOverloadCurrent(event):
+    message = "AT+CT,73," + str(slidermotorMowOverloadCurrent.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonForwardRight_click():
-    ButtonReverse.configure(state='disabled')
-    message = "AT+M," + str(manualSpeedSlider.get()) + "," + str(-1 * manualSpeedSlider.get()) + ",0"
+##
+##
+##    case 21:
+##              motor.motorMowfaultcurrent = floatValue;
+##              break;
+##            case 22:
+##              motor.motorMowOverloadCurrent = floatValue;
+##              break;
+
+
+slidermotorMowSpeedMaxPwm = tk.Scale(tabMowMotor, from_=100, to=255, label='Max PWM Speed', relief=tk.SOLID,
+                                     orient='horizontal')
+slidermotorMowSpeedMaxPwm.place(x=10, y=10, width=250, height=50)
+slidermotorMowSpeedMaxPwm.bind("<ButtonRelease-1>", updateslidermotorMowSpeedMaxPwm)
+
+slidermotorMowSpeedMinPwm = tk.Scale(tabMowMotor, from_=100, to=255, label='Min PWM Speed', relief=tk.SOLID,
+                                     orient='horizontal')
+slidermotorMowSpeedMinPwm.place(x=10, y=60, width=250, height=50)
+slidermotorMowSpeedMinPwm.bind("<ButtonRelease-1>", updateslidermotorMowSpeedMinPwm)
+
+slidermotorMowfaultcurrent = tk.Scale(tabMowMotor, from_=1, to=15, label='Max Current in Amp', relief=tk.SOLID,
+                                      orient='horizontal')
+slidermotorMowfaultcurrent.place(x=270, y=10, width=250, height=50)
+slidermotorMowfaultcurrent.bind("<ButtonRelease-1>", updateslidermotorMowfaultcurrent)
+
+slidermotorMowOverloadCurrent = tk.Scale(tabMowMotor, from_=1, to=15, label='Overload Current in Amp', relief=tk.SOLID,
+                                         orient='horizontal')
+slidermotorMowOverloadCurrent.place(x=270, y=60, width=250, height=50)
+slidermotorMowOverloadCurrent.bind("<ButtonRelease-1>", updateslidermotorMowOverloadCurrent)
+
+"""************* Odometry setting *****************************"""
+
+
+def updatesliderodometryTicksPerRevolution(event):
+    message = "AT+CT,54," + str(sliderodometryTicksPerRevolution.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonRight_click():
-    ButtonReverse.configure(state='disabled')
-    message = "AT+M," + str(0.3 * manualSpeedSlider.get()) + "," + str(-1 * manualSpeedSlider.get()) + ",0"
+def updatesliderodometryWheelBaseCm(event):
+    message = "AT+CT,55," + str(sliderodometryWheelBaseCm.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonLeft_click():
-    ButtonReverse.configure(state='disabled')
-    message = "AT+M," + str(0.3 * manualSpeedSlider.get()) + "," + str(manualSpeedSlider.get()) + ",0"
+def updatesliderodometryWheelDiameter(event):
+    message = "AT+CT,56," + str(sliderodometryWheelDiameter.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonReverse_click():
-    message = "AT+M,-" + str(manualSpeedSlider.get()) + ",0"
+sliderodometryTicksPerRevolution = tk.Scale(tabOdometry, from_=500, to=2000, label='Ticks for one full revolution',
+                                            relief=tk.SOLID, orient='horizontal')
+sliderodometryTicksPerRevolution.place(x=10, y=10, width=300, height=50)
+sliderodometryTicksPerRevolution.bind("<ButtonRelease-1>", updatesliderodometryTicksPerRevolution)
+sliderodometryWheelDiameter = tk.Scale(tabOdometry, from_=100, to=350, label='Wheels diameters in mm  ',
+                                       relief=tk.SOLID, orient='horizontal')
+sliderodometryWheelDiameter.place(x=10, y=60, width=300, height=50)
+sliderodometryWheelDiameter.bind("<ButtonRelease-1>", updatesliderodometryWheelDiameter)
+sliderodometryWheelBaseCm = tk.Scale(tabOdometry, from_=0, to=50, label='Distance between the 2 Wheels Motor (CM)',
+                                     relief=tk.SOLID, orient='horizontal')
+sliderodometryWheelBaseCm.place(x=10, y=110, width=300, height=50)
+sliderodometryWheelBaseCm.bind("<ButtonRelease-1>", updatesliderodometryWheelBaseCm)
+
+"""************* Battery setting *****************************"""
+
+
+def updatesliderbatGoHomeIfBelow(event):
+    message = "AT+CT,61," + str(sliderbatGoHomeIfBelow.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
 
-def ButtonStop_click():
-    ButtonReverse.configure(state='active')
-    message = "AT+M,0,0"
+def updatesliderbatSwitchOffIfBelow(event):
+    message = "AT+CT,62," + str(sliderbatSwitchOffIfBelow.get()) + ",0"
     message = str(message)
     message = message + '\r'
     send_serial_message(message)
 
-def startManualCamera():
-    mymower.cameraManualPageVideoStreamOn = True
-    mymower.camera = Picamera2(0)
-    frame_rate = 15
-    lowresSize = (320, 240)
-    config = mymower.camera.create_preview_configuration({'format': 'BGR888', "size": lowresSize})
-    mymower.camera.configure(config)
-    mymower.camera.set_controls({"FrameRate": frame_rate})
-    # time.sleep(2)
-    mymower.camera.start(show_preview=False)
 
-def updateManualCamera():
-    frame = mymower.camera.capture_array('main')
-    img_update = ImageTk.PhotoImage(Image.fromarray(frame))
-    ManualLabelStreamVideo.configure(image=img_update)
-    ManualLabelStreamVideo.image = img_update
-    ManualLabelStreamVideo.update()
-
-def stopManualCamera():
-    mymower.cameraManualPageVideoStreamOn = False
-    mymower.camera.stop()
-    mymower.camera.close()
+def updatesliderbatSwitchOffIfIdle(event):
+    message = "AT+CT,59," + str(60*sliderbatSwitchOffIfIdle.get()) + ",0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
 
 
-ManualPage = tk.Frame(fen1)
-ManualPage.place(x=0, y=0, height=400, width=800)
-Frame1 = tk.Frame(ManualPage)
-Frame1.place(x=0, y=0, height=300, width=300)
-
-#Buttontest2 = tk.Button(ManualPage, text="Test2", wraplength=80, command=test2_click)
-#Buttontest2.place(x=320, y=00, height=30, width=30)
-
-ManualFrameStreamVideo = tk.Frame(ManualPage, borderwidth="1", relief=tk.SOLID)
-ManualFrameStreamVideo.place(x=325, y=30, width=320, height=240)
-
-ManualLabelStreamVideo = tk.Label(ManualFrameStreamVideo)  # ,image=img)
-ManualLabelStreamVideo.grid(row=0, column=0, pady=0, padx=0)
-
-ButtonForward = tk.Button(Frame1, image=imgForward, command=ButtonForward_click, repeatdelay=500, repeatinterval=500)
-ButtonForward.place(x=100, y=0, height=100, width=100)
-ButtonForwardLeft = tk.Button(Frame1, image=imgForwardLeft, command=ButtonForwardLeft_click, repeatdelay=500,repeatinterval=500)
-ButtonForwardLeft.place(x=0, y=0, height=100, width=100)
-ButtonForwardRight = tk.Button(Frame1, image=imgForwardRight, command=ButtonForwardRight_click, repeatdelay=500,repeatinterval=500)
-ButtonForwardRight.place(x=200, y=0, height=100, width=100)
-ButtonStop = tk.Button(Frame1, image=imgStop, command=ButtonStop_click)
-ButtonStop.place(x=100, y=100, height=100, width=100)
-ButtonRight = tk.Button(Frame1, image=imgRight, command=ButtonRight_click, repeatdelay=500, repeatinterval=500)
-ButtonRight.place(x=200, y=100, height=100, width=100)
-ButtonLeft = tk.Button(Frame1, image=imgLeft, command=ButtonLeft_click, repeatdelay=500, repeatinterval=500)
-ButtonLeft.place(x=0, y=100, height=100, width=100)
-ButtonReverse = tk.Button(Frame1, image=imgReverse, command=ButtonReverse_click)
-ButtonReverse.place(x=100, y=200, height=100, width=100)
-
-ButtonBladeStart = tk.Button(ManualPage, image=imgBladeStart, command=buttonBlade_start_click)
-ButtonBladeStart.place(x=680, y=5, width=100, height=50)
-ButtonBladeStop = tk.Button(ManualPage, image=imgBladeStop, command=buttonBlade_stop_click)
-ButtonBladeStop.place(x=680, y=55, width=100, height=80)
-
-ButtonStopAllManual = tk.Button(ManualPage, image=imgStopAll, command=button_stop_all_click)
-ButtonStopAllManual.place(x=680, y=140, width=100, height=130)
-
-tk.Label(ManualPage, image=imgJoystick).place(x=400, y=325)
-ButtonJoystickON = tk.Button(ManualPage, image=imgJoystickON, command=ButtonJoystickON_click)
-ButtonJoystickON.place(x=500, y=340, width=50, height=50)
-ButtonJoystickOFF = tk.Button(ManualPage, image=imgJoystickOFF, command=ButtonJoystickOFF_click)
-ButtonJoystickOFF.place(x=350, y=340, width=50, height=50)
-
-RdBtn_keyboard = tk.Checkbutton(ManualPage, text="Use Keyboard to drive the mower", variable=ManualKeyboardUse).place(
-    x=0, y=365)
-
-manualSpeedSlider = tk.Scale(ManualPage, orient='horizontal', resolution=0.1, from_=0, to=0.8)
-manualSpeedSlider.place(x=0, y=300, width=300, height=60)
-manualSpeedSlider.set(0.2)
-tk.Label(ManualPage, text='SPEED', fg='green').place(x=0, y=300)
-
-"""
-slider1 = tk.Scale(orient='horizontal', from_=0, to=350)
-slider1.place(x=50,y=50,anchor='nw',width=300, height=50)
-slider2 = tk.Scale(orient='horizontal', from_=0, to=100)
-slider2.place(x=50,y=100,anchor='nw',width=300, height=50)
-"""
-ButtonBackHome = tk.Button(ManualPage, image=imgBack, command=ButtonBackToMain_click)
-ButtonBackHome.place(x=680, y=280, height=120, width=120)
+def updatesliderstartChargingIfBelow(event):
+    message = "AT+CT,58," + str(sliderstartChargingIfBelow.get()) + ",0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
 
 
+def updatesliderbatFullCurrent(event):
+    message = "AT+CT,60," + str(sliderbatFullCurrent.get()) + ",0"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
 
 
+sliderbatGoHomeIfBelow = tk.Scale(tabBattery, from_=20, to=30, resolution=0.1, label='Go Home if Voltage Below ',
+                                  relief=tk.SOLID, orient='horizontal')
+# sliderbatGoHomeIfBelow = ttk.Scale(tabBattery, from_=20.0, to=30.0)
+sliderbatGoHomeIfBelow.place(x=10, y=10, width=250, height=50)
+sliderbatGoHomeIfBelow.bind("<ButtonRelease-1>", updatesliderbatGoHomeIfBelow)
 
-"""**************************THE CONSOLE PAGE  **********************************************"""
+sliderbatSwitchOffIfBelow = tk.Scale(tabBattery, from_=20, to=30, resolution=0.1, label='All OFF if Voltage Below ',
+                                     relief=tk.SOLID, orient='horizontal')
+sliderbatSwitchOffIfBelow.place(x=10, y=60, width=250, height=50)
+sliderbatSwitchOffIfBelow.bind("<ButtonRelease-1>", updatesliderbatSwitchOffIfBelow)
 
+sliderbatSwitchOffIfIdle = tk.Scale(tabBattery, from_=5, to=60, label='All OFF After this Delay in Minute',
+                                    relief=tk.SOLID, orient='horizontal')
+sliderbatSwitchOffIfIdle.place(x=10, y=110, width=250, height=50)
+sliderbatSwitchOffIfIdle.bind("<ButtonRelease-1>", updatesliderbatSwitchOffIfIdle)
 
+sliderstartChargingIfBelow = tk.Scale(tabBattery, from_=20, to=30, resolution=0.1,
+                                      label='Start Charging if Voltage Below ', relief=tk.SOLID, orient='horizontal')
+sliderstartChargingIfBelow.place(x=10, y=160, width=250, height=50)
+sliderstartChargingIfBelow.bind("<ButtonRelease-1>", updatesliderstartChargingIfBelow)
 
-def ButtonTesting_click():
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-               "/maps02" + "/DOCK.npy"
-    ##    if (os.path.exists(fileName)):
-    ##            crc_mow=0.0
-    ##            mowPts=np.load(fileName)
-    ##            mowPts_count=int(len(mowPts))
-    ##            print(mowPts)
-    ##
-    ##            for ip in range(int(len(mowPts))):
-    ##
-    ##                crc_mow=(crc_mow) + (100*float(mowPts[ip][0])) + (100*float(mowPts[ip][1]))
-    ##
-    ##            print(crc_mow)
-    ##            crc_mow=0.0
-    ##            for ip in range(int(len(mowPts1))):
-    ##
-    ##                crc_mow=(crc_mow) + (100*(mowPts1[ip][0])) + (100*(mowPts1[ip][1]))
-    ##
-    ##            print(crc_mow)
+sliderbatFullCurrent = tk.Scale(tabBattery, from_=0, to=2, resolution=0.1,
+                                label='Start mowing if Charge Current Below ', relief=tk.SOLID, orient='horizontal')
+sliderbatFullCurrent.place(x=10, y=210, width=250, height=50)
+sliderbatFullCurrent.bind("<ButtonRelease-1>", updatesliderbatFullCurrent)
 
-    if (os.path.exists(fileName)):
-        crc_mow = 0.0
-        mowPts = np.load(fileName)
-        mowPts_count = int(len(mowPts))
-        print(mowPts)
+"""************* SONAR setting *****************************"""
 
-    fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
-               "/maps04" + "/DOCK.npy"
-    if (os.path.exists(fileName)):
-        crc_mow = 0.0
-        mowPts1 = np.load(fileName)
-        mowPts1_count = int(len(mowPts1))
-        print(mowPts1)
-
-    for ip in range(int(len(mowPts))):
-        # print(mowPts[ip][0], " / " , mowPts1[ip][0])
-
-        if ((100 * float(mowPts[ip][0])) != (100 * float(mowPts1[ip][0]))):
-            print("erreur x :", ip, (mowPts[ip][0]), (mowPts1[ip][0]))
-
-        if ((100 * float(mowPts[ip][1])) != (100 * float(mowPts1[ip][1]))):
-            print("erreur y :", ip, 100 * float(mowPts[ip][1]), 100 * float(mowPts1[ip][1]))
-    print("fini")
+##ChkBtnsonarCenterUse=tk.Checkbutton(tabSonar, text="Use Sonar center",relief=tk.SOLID,variable=SonVar1,anchor='nw')
+##ChkBtnsonarCenterUse.place(x=10,y=10,width=250, height=20)
+##ChkBtnsonarLeftUse=tk.Checkbutton(tabSonar, text="Use Sonar Left",relief=tk.SOLID,variable=SonVar2,anchor='nw')
+##ChkBtnsonarLeftUse.place(x=10,y=40,width=250, height=20)
+##ChkBtnsonarRightUse=tk.Checkbutton(tabSonar, text="Use Sonar Right",relief=tk.SOLID,variable=SonVar3,anchor='nw')
+##ChkBtnsonarRightUse.place(x=10,y=70,width=250, height=20)
+##
+##ChkBtnsonarLikeBumper=tk.Checkbutton(tabSonar, text="Sonar like a Bumper",relief=tk.SOLID,variable=SonVar4,anchor='nw')
+##ChkBtnsonarLikeBumper.place(x=10,y=100,width=250, height=20)
+##
+##slidersonarTriggerBelow = tk.Scale(tabSonar,orient='horizontal',relief=tk.SOLID, from_=20, to=150, label='Detect Below in CM ')
+##slidersonarTriggerBelow.place(x=10,y=130,width=250, height=50)
+##
+##slidersonarToFront = tk.Scale(tabSonar,orient='horizontal',relief=tk.SOLID, from_=0, to=100, label='Sonar to mower Front in CM ')
+##slidersonarToFront.place(x=10,y=200,width=250, height=50)
 
 
+"""************* Motor setting *****************************"""
+
+sliderPowerMax = tk.Scale(tabWheelMotor, orient='horizontal', relief=tk.SOLID, from_=0, to=100,
+                          label='Power Max in Watt (0 to 100)')
+sliderPowerMax.place(x=5, y=10, width=250, height=50)
+
+"""************* Vision setting *****************************"""
+
+# exemple of vision_list=[['person',1,80,15],['chair',52,85,18,]]
+# vision_list=[['person',1,80,15],['chair',52,85,18]]
+# Read the file and create the list
+with open("vision_list.bin", "rb") as fp:
+    vision_list = pickle.load(fp)
+    print("Vision file OK")
 
 
-def ButtonClearConsole_click():
-    txtRecu.delete('1.0', tk.END)
-    txtSend.delete('1.0', tk.END)
-    txtConsoleRecu.delete('1.0', tk.END)
+def OnClick_vision(app):
+    try:
+        itemVision = treeVision.selection()[0]
+        txtVisionObject.delete('1.0', 'end')
+        txtVisionObject.insert('1.0', vision_list[treeVision.item(itemVision, "text")][0])
+        txtVisionID.delete('1.0', 'end')
+        txtVisionID.insert('1.0', vision_list[treeVision.item(itemVision, "text")][1])
+        txtVisionScore.delete('1.0', 'end')
+        txtVisionScore.insert('1.0', vision_list[treeVision.item(itemVision, "text")][2])
+        txtVisionArea.delete('1.0', 'end')
+        txtVisionArea.insert('1.0', vision_list[treeVision.item(itemVision, "text")][3])
+
+    except:
+        print("Please click on correct line")
 
 
-ConsolePage = tk.Frame(fen1)
-ConsolePage.place(x=0, y=0, height=400, width=800)
+# Building the treeVisionView
+treeVision = ttk.Treeview(tabVision)
+scrollbarVision1 = ttk.Scrollbar(treeVision, orient="vertical", command=treeVision.yview)
+scrollbarVision1.pack(side=tk.RIGHT, fill=tk.Y)
+treeVision.configure(yscrollcommand=scrollbarVision1.set)
+
+minwidth = treeVision.column('#0', option='minwidth')
+treeVision.column('#0', width=minwidth)
+
+treeVision["columns"] = ("0", "1", "2", "3")
+treeVision.column("0", width=150)
+treeVision.column("1", width=60, anchor='center')
+treeVision.column("2", width=60, anchor='center')
+treeVision.column("3", width=60, anchor='center')
+
+treeVision.heading("0", text="Name")
+treeVision.heading("1", text="Object ID ")
+treeVision.heading("2", text=" % Score")
+treeVision.heading("3", text=" % Image Area")
+
+treeVision.bind("<ButtonRelease-1>", OnClick_vision)
+treeVision.place(x=0, y=0, height=300, width=520)
 
 
-# ...existing code...
+def rebuild_treeVisionview():
+    for i in treeVision.get_children():
+        treeVision.delete(i)
+    for i in range(0, len(vision_list)):
+        treeVision.insert("", 'end', text=i,
+                          values=(vision_list[i][0], vision_list[i][1], vision_list[i][2], vision_list[i][3]))
 
-rtcm_thread = None
-rtcm_thread_running = False
 
-def start_rtcm_thread():
-    global rtcm_thread, rtcm_thread_running
-    if not rtcm_thread_running:
-        rtcm_thread_running = True
-        rtcm_thread = threading.Thread(target=rtcm_udp_to_lc29hea, daemon=True)
-        rtcm_thread.start()
-        consoleInsertText("RTCM/LC29HEA : Démarrage du flux\n")
+def save_VisionList():
+    with open("vision_list.bin", "wb") as fp:
+        pickle.dump(vision_list, fp)
+
+
+def del_vision_line():
+    curr = treeVision.focus()
+    if '' == curr: return
+    search_object = txtVisionObject.get("1.0", 'end-1c')
+
+    for i in range(0, len(vision_list)):
+        if (str(vision_list[i][0]) == str(search_object)):
+            for value in vision_list[:]:
+                if (value[0] == search_object):
+                    vision_list.remove(value)
+                    print("remov ok")
+
+            break
+
+    rebuild_treeVisionview()
+
+
+def add_vision_line():
+    maVisionList = [txtVisionObject.get("1.0", 'end-1c'), txtVisionID.get("1.0", 'end-1c'),
+                    txtVisionScore.get("1.0", 'end-1c'), txtVisionArea.get("1.0", 'end-1c')]
+    vision_list.append(maVisionList)
+    rebuild_treeVisionview()
+
+
+def vison_test():
+    search_code = (b'dog')
+    for i in range(0, len(vision_list)):
+        if (str("b'" + vision_list[i][0] + "'") == str(search_code)):
+            print("trouv")
+            print(vision_list[i])
+
+
+tk.Label(tabVision, text="Name:", font=("Arial", 10), fg='green').place(x=530, y=5, height=20, width=80)
+tk.Label(tabVision, text="ID:", font=("Arial", 10), fg='green').place(x=530, y=25, height=20, width=80)
+tk.Label(tabVision, text="Score:", font=("Arial", 10), fg='green').place(x=530, y=45, height=20, width=80)
+tk.Label(tabVision, text="Area:", font=("Arial", 10), fg='green').place(x=530, y=65, height=20, width=80)
+
+txtVisionObject = tk.Text(tabVision)
+txtVisionObject.place(x=630, y=5, width=120, height=20)
+txtVisionObject.delete('1.0', 'end')
+txtVisionObject.insert('1.0', vision_list[0][0])
+txtVisionID = tk.Text(tabVision)
+txtVisionID.place(x=630, y=25, width=120, height=20)
+txtVisionID.delete('1.0', 'end')
+txtVisionID.insert('1.0', vision_list[0][1])
+txtVisionScore = tk.Text(tabVision)
+txtVisionScore.place(x=630, y=45, width=120, height=20)
+txtVisionScore.delete('1.0', 'end')
+txtVisionScore.insert('1.0', vision_list[0][2])
+txtVisionArea = tk.Text(tabVision)
+txtVisionArea.place(x=630, y=65, width=120, height=20)
+txtVisionArea.delete('1.0', 'end')
+txtVisionArea.insert('1.0', vision_list[0][3])
+
+ButtonVisionAdd = tk.Button(tabVision, text="Add ", command=add_vision_line)
+ButtonVisionAdd.place(x=530, y=170, height=30, width=110)
+ButtonVisionDel = tk.Button(tabVision, text="Delete ", command=del_vision_line)
+ButtonVisionDel.place(x=660, y=170, height=30, width=100)
+ButtonVisionSave = tk.Button(tabVision, text="Save to File", command=save_VisionList)
+ButtonVisionSave.place(x=530, y=210, height=60, width=140)
+
+# ButtonVisionTest = tk.Button(tabVision, text="seek test",command = vison_test)
+# ButtonVisionTest.place(x=530, y=260, height=60, width=140)
+
+rebuild_treeVisionview()
+
+""" THE AUTO PAGE ***************************************************"""
+from matplotlib.artist import Artist
+# def onPickPoint(event):
+#     ind = event.ind
+#     print('onpickPoint scatter:', ind )
+    
+
+
+ 
+# def onPickPoint(event):
+#     global selectedPoint
+    
+#     line = event.artist
+#     xdata, ydata = line.get_data()
+#     ind = event.ind
+#     print('on pick line: ',ind," " , np.array([xdata[ind], ydata[ind]]))
+#     selectedPoint = event.artist
+#     if selectedPoint != None:
+#         props = { 'color' : "Red" }
+#         #Artist.update(event.ind, props)
+#         canvasLiveMap.draw()   
+    
+
+def BtnTextHouseNrLeft_click():
+    mymower.House = int(mymower.House) - 1
+    if (mymower.House <= 0):
+        mymower.House = 0
+    textHouseNr.configure(text=mymower.House)
+    rebuildHouseMap()
+
+
+def BtnTextHouseNrRight_click():
+    mymower.House = int(mymower.House) + 1
+    if (mymower.House >= 10):
+        mymower.House = 10
+    textHouseNr.configure(text=mymower.House)
+    rebuildHouseMap()
+
+
+def rebuildHouseMap():
+    mymower.full_house = 1
+    tk_HouseView.set(1)
+    initialPlotAutoPageFullHouse()
+
+
+def button_home_click():
+    message = "AT+C,-1,4,-1,-1,-1,-1,-1,1"
+    message = str(message)
+    message = message + '\r'
+    send_serial_message(message)
+    mymower.lastRunningTimer = mymower.ActualRunningTimer
+    mymower.ActualRunningTimer = 99
+
+
+def buttonStartMow_click():
+    # mow en ,op,speed,timeout,finishandrestart,mowpercent,skipNextMowingPoint,sonar.enabled
+
+    message = "AT+C,-1,1," + str(LinearSpeedSlider.get()) + ",100,0," + str(AutoSliderStart.get() / 100) + ",0,0,208"
+    message = str(message)
+    message = message + '\r'
+    print(message)
+    send_serial_message(message)
+
+
+def updatesAutoSliderStart(event):
+    mymower.startMowPointIdx = int(mymower.mowPointsCount * AutoSliderStart.get() / 100)
+    if (mymower.startMowPointIdx < 0):
+        mymower.startMowPointIdx = 0
+    if (int(AutoSliderStart.get()) >= int(AutoSliderStop.get())):
+        AutoSliderStop.set(AutoSliderStart.get())
+        mymower.stopMowPointIdx = mymower.startMowPointIdx + 1
+        tk_labelStopIdx.set(mymower.stopMowPointIdx)
+
+    tk_labelStartIdx.set(mymower.startMowPointIdx)
+    initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
+
+
+def updatesAutoSliderStop(event):
+    mymower.stopMowPointIdx = int(mymower.mowPointsCount * int(AutoSliderStop.get()) / 100)
+    tk_labelStopIdx.set(mymower.stopMowPointIdx)
+    initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
+
+
+def updatesRdBtn_HouseView():
+    
+    if tk_HouseView.get() == 1:
+        mymower.full_house = 1
+        print("house view")
+        initialPlotAutoPageFullHouse()
+
     else:
-        consoleInsertText("RTCM/LC29HEA : Déjà en cours\n")
+        mymower.full_house = 0
+        print("Map view")
+        initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
 
-def stop_rtcm_thread():
-    global rtcm_thread_running
-    if rtcm_thread_running:
-        rtcm_thread_running = False
-        consoleInsertText("RTCM/LC29HEA : Arrêt demandé\n")
+
+def updatesRdBtn_Resume():
+    if tk_ResumeMowing.get() == 1:
+        AutoSliderStart.place_forget()
+        AutoPercentLabel.place_forget()
+        AutoPercentLabel.text = ''
+        AutoSliderStart.set(-1)
+        AutoSliderStop.set(100)
+
+
+
     else:
-        consoleInsertText("RTCM/LC29HEA : Déjà arrêté\n")
-
-ButtonStartRtcm = tk.Button(ConsolePage, text="Start RTCM/LC29HEA", command=start_rtcm_thread, bg="lightgreen")
-ButtonStartRtcm.place(x=10, y=370, height=30, width=180)
-
-ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=stop_rtcm_thread, bg="tomato")
-ButtonStopRtcm.place(x=210, y=370, height=30, width=180)
-
-# ...existing code...
+        AutoSliderStart.place(x=430, y=175, width=40, height=170)
+        AutoPercentLabel.place(x=445, y=155)
+    mymower.startMowPointIdx = mymower.mowPointsIdx
+    initialPlotAutoPage(mymower.startMowPointIdx, mymower.stopMowPointIdx)
+    tk_labelStartIdx.set(mymower.mowPointsIdx)
+    tk_labelStopIdx.set(mymower.mowPointsCount)
 
 
+AutoPage = tk.Frame(fen1)
+AutoPage.place(x=0, y=0, height=400, width=800)
 
+batteryFrame = tk.Frame(AutoPage)
+batteryFrame.place(x=430, y=10, height=80, width=100)
+batteryFrame.configure(borderwidth="3", relief=tk.GROOVE, background="#d9d9d9", highlightbackground="#d9d9d9",
+                       highlightcolor="black")
 
+tk.Label(batteryFrame, text="BATTERY", fg='green', font=("Arial", 12)).pack(side='top', anchor='n')
+tk.Label(batteryFrame, textvariable=tk_batSense, fg='red', font=("Arial", 12)).pack(side='bottom', anchor='n')
+tk.Label(batteryFrame, textvariable=tk_batteryVoltage, fg='red', font=("Arial", 20)).pack(side='bottom', anchor='n')
 
+temperatureFrame = tk.Frame(AutoPage)
+temperatureFrame.place(x=430, y=95, height=60, width=100)
+temperatureFrame.configure(borderwidth="3", relief=tk.GROOVE, background="#d9d9d9", highlightbackground="#d9d9d9",
+                           highlightcolor="black")
+tk.Label(temperatureFrame, text="TEMPERATURE", fg='green').pack(side='top', anchor='n')
+tk.Label(temperatureFrame, textvariable=tk_PiTemp, fg='red', font=("Arial", 20)).pack(side='bottom', anchor='n')
 
+GpsFrame = tk.Frame(AutoPage)
+GpsFrame.place(x=570, y=145, width=100, height=80)
+GpsFrame.configure(borderwidth="3", relief=tk.GROOVE, background="#d9d9d9", highlightbackground="#d9d9d9",
+                   highlightcolor="black")
+tk.Label(GpsFrame, text="GPS", fg='green', font=("Arial", 12)).place(x=25, y=1)
+tk.Label(GpsFrame, textvariable=tk_GpsSolution, fg='red', font=("Arial", 20)).pack(side='bottom', anchor='center')
+tk.Label(GpsFrame, textvariable=tk_gpsnumSV, fg='black', font=("Arial", 10)).pack(side='bottom', anchor='center')
 
-
-
-txtRecu = tk.Text(ConsolePage)
-ScrollTxtRecu = tk.Scrollbar(txtRecu)
-ScrollTxtRecu.pack(side=tk.RIGHT, fill=tk.Y)
-txtRecu.pack(side=tk.LEFT, fill=tk.Y)
-ScrollTxtRecu.config(command=txtRecu.yview)
-txtRecu.config(yscrollcommand=ScrollTxtRecu.set)
-txtRecu.place(x=0, y=300, anchor='nw', width=480, height=100)
-
-txtSend = tk.Text(ConsolePage)
-ScrollTxtSend = tk.Scrollbar(txtSend)
-ScrollTxtSend.pack(side=tk.RIGHT, fill=tk.Y)
-txtSend.pack(side=tk.LEFT, fill=tk.Y)
-ScrollTxtSend.config(command=txtSend.yview)
-txtSend.config(yscrollcommand=ScrollTxtSend.set)
-txtSend.place(x=490, y=300, anchor='nw', width=300, height=100)
-
-txtConsoleRecu = tk.Text(ConsolePage)
-ScrolltxtConsoleRecu = tk.Scrollbar(txtConsoleRecu)
-ScrolltxtConsoleRecu.pack(side=tk.RIGHT, fill=tk.Y)
-txtConsoleRecu.pack(side=tk.LEFT, fill=tk.Y)
-ScrolltxtConsoleRecu.config(command=txtConsoleRecu.yview)
-txtConsoleRecu.config(yscrollcommand=ScrolltxtConsoleRecu.set)
-txtConsoleRecu.place(x=0, y=5, anchor='nw', width=800, height=290)
-
-
-ButtonClearConsole = tk.Button(ConsolePage)
-ButtonClearConsole.place(x=660, y=75, height=35, width=120)
-ButtonClearConsole.configure(command=ButtonClearConsole_click, text="Clear Console")
-
-ButtonSaveReceived = tk.Button(ConsolePage)
-ButtonSaveReceived.place(x=660, y=120, height=35, width=120)
-ButtonSaveReceived.configure(command=ButtonSaveReceived_click, text="Save To File")
-
-ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_click)
-ButtonBackHome.place(x=660, y=160, height=120, width=120)
-
-
-
-
-""" THE NEW MAPS PAGE ***************************************************"""
-
-
-
-
-NewMapsPage = tk.Frame(fen1)
-NewMapsPage.place(x=0, y=0, height=400, width=800)
-FrameNMP1 = tk.Frame(NewMapsPage)
-FrameNMP1.place(x=0, y=0, height=300, width=300)
-ButtonForwardNMP = tk.Button(FrameNMP1, image=imgForward, command=ButtonForward_click, repeatdelay=500, repeatinterval=500)
-ButtonForwardNMP.place(x=100, y=0, height=100, width=100)
-ButtonForwardLeftNMP = tk.Button(FrameNMP1, image=imgForwardLeft, command=ButtonForwardLeft_click, repeatdelay=500,repeatinterval=500)
-ButtonForwardLeftNMP.place(x=0, y=0, height=100, width=100)
-ButtonForwardRightNMP = tk.Button(FrameNMP1, image=imgForwardRight, command=ButtonForwardRight_click, repeatdelay=500,repeatinterval=500)
-ButtonForwardRightNMP.place(x=200, y=0, height=100, width=100)
-ButtonStopNMP = tk.Button(FrameNMP1, image=imgStop, command=ButtonStop_click)
-ButtonStopNMP.place(x=100, y=100, height=100, width=100)
-ButtonRightNMP = tk.Button(FrameNMP1, image=imgRight, command=ButtonRight_click, repeatdelay=500, repeatinterval=500)
-ButtonRightNMP.place(x=200, y=100, height=100, width=100)
-ButtonLeftNMP = tk.Button(FrameNMP1, image=imgLeft, command=ButtonLeft_click, repeatdelay=500, repeatinterval=500)
-ButtonLeftNMP.place(x=0, y=100, height=100, width=100)
-ButtonReverseNMP = tk.Button(FrameNMP1, image=imgReverse, command=ButtonReverse_click)
-ButtonReverseNMP.place(x=100, y=200, height=100, width=100)
-
+PosFrame = tk.Frame(AutoPage)
+PosFrame.place(x=570, y=228, width=100, height=50)
+PosFrame.configure(borderwidth="3", relief=tk.GROOVE, background="#d9d9d9", highlightbackground="#d9d9d9",
+                   highlightcolor="black")
+tk.Label(PosFrame, text="POS", fg='green', font=("Arial", 12)).place(x=25, y=1)
+tk.Label(PosFrame, textvariable=tk_mowPointIdx, fg='black', font=("Arial", 10)).pack(side='bottom', anchor='center')
 
 # creation of the canvas for map view
-FrameLiveMapNMP = tk.Frame(NewMapsPage, borderwidth="1", relief=tk.SOLID)
-FrameLiveMapNMP.place(x=305, y=5, width=360,height=330)
-figLiveMapNMP, axLiveMapNMP = plt.subplots()
-canvasLiveMapNMP = FigureCanvasTkAgg(figLiveMapNMP, master=FrameLiveMapNMP)
-canvasLiveMapNMP.get_tk_widget().place(x=0, y=0, width=360, height=330)
+FrameLiveMap = tk.Frame(AutoPage, borderwidth="1", relief=tk.SOLID)
+FrameLiveMap.place(x=5, y=5, height=330, width=360)
 
-axLiveMapNMP.plot(mymower.ActiveMapX, mymower.ActiveMapY, color='r', linewidth=0.4, marker='.', markersize=2)
+figLiveMap, axLiveMap = plt.subplots()
+#bb100
+#zoom_factory(axLiveMap)
+#ph = panhandler(figLiveMap, button=2)
+#axLiveMap.autoscale(False)
 
-canvasLiveMapNMP.draw()
+canvasLiveMap = FigureCanvasTkAgg(figLiveMap, master=FrameLiveMap)
+canvasLiveMap.get_tk_widget().place(x=0, y=0, width=360, height=330)
 
-def BtnRecordMapStop_click():
-    mymower.record_perimeter=False
+axLiveMap.plot(mymower.ActiveMapX, mymower.ActiveMapY, color='r', linewidth=0.4, marker='.', markersize=2)
+
+canvasLiveMap.draw()
+
+#cid2 = canvasLiveMap.mpl_connect('pick_event', onPickPoint)
+
+# fig, ax = plt.subplots()
+# ax.plot(np.random.rand(10))
+
+def onMapclick(event):
     
-def BtnRecordMapStart_click():
-    mymower.record_perimeter=True
+    print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+          ('double' if event.dblclick else 'single', event.button,
+           event.x, event.y, event.xdata, event.ydata))
 
-def updateNewMapsPage():     
-    mowerpos1 = [mymower.laststatex, mymower.statex]
-    mowerpos2 = [mymower.laststatey, mymower.statey]
+    Point_X = event.xdata
+    Point_Y = event.ydata
 
-    axLiveMapNMP.plot(mowerpos1, mowerpos2, color='g', linewidth=2)
-    axLiveMapNMP.scatter(mymower.statex,mymower.statey, color='g', s=10)
-    #axLiveMap.autoscale(False)
-    canvasLiveMapNMP.draw()
-
-
-def BtnSaveMap_click():
-    mymower.newPerimeter=np.array(list(zip(mymower.newPerimeterx,mymower.newPerimetery)))
-    fileName = cwd + "/House" + "{0:0>2}".format(VarHouseNrNMP.get()) + \
-                           "/maps" + "{0:0>2}".format(VarMapNrNMP.get()) + "/perimeter_raw.npy"
-    if os.path.exists(fileName):
-        messagebox.showwarning('warning', "file already exist try at other location")
-    else:
-        output_file = Path(fileName)
-        output_file.parent.mkdir(exist_ok=True, parents=True)
-        np.save(fileName, mymower.newPerimeter, allow_pickle=True, fix_imports=True)
-        print(mymower.newPerimeter)
-        fileNamePeri = cwd + "/House" + "{0:0>2}".format(VarHouseNrNMP.get()) + \
-                           "/maps" + "{0:0>2}".format(VarMapNrNMP.get()) + "/perimeter.npy"
-        polygon1 = Polygon(np.squeeze(mymower.newPerimeter))
-        from shapely.validation import explain_validity
-        print(explain_validity(polygon1))
-        print("valid  polygon init " ,polygon1.is_valid)
-        new_polygon = polygon1.buffer(0)
-        #border = border.buffer(0.05, resolution=16, join_style=2, mitre_limit=1, single_sided=True)
-        print("valid  polygon2 " ,new_polygon.is_valid)
-        polygon2=new_polygon.geoms[0].simplify(tolerance=0.03, preserve_topology=True) #tolerance is 2 cm here
-        a, b = polygon2.exterior.xy
-        print(len(a),len(mymower.newPerimeter))
-        axLiveMapNMP.plot(a,b,color='g', linewidth=0.4,picker=True,marker='.')
-        
-        
-
-
-BtnRecordMapStop = tk.Button(NewMapsPage, command=BtnRecordMapStop_click, text="Stop Record")
-BtnRecordMapStop.place(x=0, y=370, height=25, width=80)
-BtnRecordMapStart = tk.Button(NewMapsPage, command=BtnRecordMapStart_click, text="Start Record")
-BtnRecordMapStart.place(x=90, y=370, height=25, width=80)
-
-BtnSaveMap = tk.Button(NewMapsPage, command=BtnSaveMap_click, text="Save Map")
-BtnSaveMap.place(x=690, y=220, height=25, width=80)
-
-#style = ttk.Style()
-#style.theme_use('default')
-#style.configure('My.TSpinbox', font=('Arial', 30),arrowsize=35)
-from tkinter.font import Font
-
-tk.Label(NewMapsPage, text="House",font=Font(family='Arial', size=16)).place(x=690, y=0)
-VarHouseNrNMP = tk.IntVar()
-VarHouseNrNMP.set(9)  # set the initial value
-HouseNrNMPspinbox = tk.Spinbox(NewMapsPage, from_=0, to=9, textvariable=VarHouseNrNMP,font=Font(family='Arial', size=36))
-HouseNrNMPspinbox.place(x=690, y=30, height=70, width=85)
-
-tk.Label(NewMapsPage, text="Map",font=Font(family='Arial', size=16)).place(x=690, y=110)
-VarMapNrNMP = tk.IntVar()
-VarMapNrNMP.set(9)  # set the initial value
-MapNrNMPspinbox = tk.Spinbox(NewMapsPage, from_=1, to=9, textvariable=VarMapNrNMP,font=Font(family='Arial', size=36))
-MapNrNMPspinbox.place(x=690, y=140, height=70, width=85)
-Small_imgBack=imgBack.subsample(2, 2)
-ButtonBackHome = tk.Button(NewMapsPage, image=Small_imgBack, command=ButtonBackToMain_click)
-ButtonBackHome.place(x=680, y=280, height=60, width=60)
+   #axLiveMap.reset_position()
+   # axLiveMap.drag_pan(1, event.key, event.x, event.y)
 
 
 
 
 
 
-""" THE PLOT PAGE ***************************************************"""
+   
+    #axLiveMap.set_position([Point_X,Point_Y,20,20])
 
-TabPlot = ttk.Notebook(fen1)
-tabPlotMain = tk.Frame(TabPlot, width=800, height=400)
-tabPlotWheelMotor = tk.Frame(TabPlot, width=800, height=200)
-tabPlotMowMotor = tk.Frame(TabPlot, width=800, height=200)
-tabPlotPerimeter = tk.Frame(TabPlot, width=800, height=200)
-tabPlotBattery = tk.Frame(TabPlot, width=800, height=200)
-tabPlotImu = tk.Frame(TabPlot, width=800, height=200)
+    if (mymower.full_house == 1) & (event.dblclick):
+        point = geometry.Point(Point_X, Point_Y)
 
-TabPlot.add(tabPlotMain, text="Main")
-TabPlot.add(tabPlotWheelMotor, text="Wheels Motor")
-TabPlot.add(tabPlotMowMotor, text="Mow Motor")
-TabPlot.add(tabPlotPerimeter, text="Perimeter")
-TabPlot.add(tabPlotBattery, text="Battery")
-TabPlot.add(tabPlotImu, text="Imu")
+        for idx in range(int(len(mymower.mapNrList))):
+            mapNr = int(mymower.mapNrList[idx])
+            if (mymower.polygon[mapNr].contains(point)):
+                print(mapNr)
+                returnval = messagebox.askyesno('Info', "Upload map " + str(mapNr) + " to robot")
+                if (returnval):
+                    mymower.mapOnMowerNr = mapNr
+                    export_map_to_mower(mymower.House, mymower.mapOnMowerNr)
+                    mymower.full_house = 0
+                    tk_HouseView.set(0)
+                    initActiveMap(0)
+                    initialPlotAutoPage(0, 99999)
+                    return
 
-TabPlot.place(x=0, y=0, height=400, width=800)
+    # figLiveMap.canvas.mpl_disconnect(cid)
 
-# 'Main
-Frame11 = tk.Frame(tabPlotMain, relief=tk.GROOVE, borderwidth="3")
-Frame11.place(x=10, y=20, height=80, width=680)
 
-BtnMotPlotStopAll = tk.Button(Frame11, command=BtnMotPlotStopAll_click, text="Stop ALL the Data send by DUE")
-BtnMotPlotStopAll.place(x=10, y=10, height=25, width=250)
+cid = figLiveMap.canvas.mpl_connect('button_press_event', onMapclick)
 
-# 'Wheel Motor
-tk.Label(tabPlotWheelMotor, text="Mower Millis : ").place(x=300, y=0)
-tk.Label(tabPlotWheelMotor, textvariable=tk_millis).place(x=400, y=0)
-Frame12 = tk.Frame(tabPlotWheelMotor, relief=tk.GROOVE, borderwidth="3")
-Frame12.place(x=10, y=20, height=80, width=680)
-BtnMotPlotStartRec = tk.Button(Frame12, command=BtnMotPlotStartRec_click, text="Start")
-BtnMotPlotStartRec.place(x=0, y=0, height=25, width=60)
-BtnMotPlotStopRec = tk.Button(Frame12, command=BtnMotPlotStopRec_click, text="Stop")
-BtnMotPlotStopRec.place(x=0, y=25, height=25, width=60)
-SldMainWheelRefresh = tk.Scale(Frame12, from_=1, to=10, label='Refresh Rate per second', relief=tk.SOLID,
-                               orient='horizontal')
-SldMainWheelRefresh.place(x=70, y=0, width=250, height=50)
-
-tk.Label(Frame12, text='Power', fg='green').place(x=400, y=0)
-tk.Label(Frame12, text='Left', fg='green').place(x=350, y=15)
-tk.Label(Frame12, textvariable=tk_motorLeftPower).place(x=400, y=15)
-tk.Label(Frame12, text='Right', fg='green').place(x=350, y=35)
-tk.Label(Frame12, textvariable=tk_motorRightPower).place(x=400, y=35)
-tk.Label(Frame12, text='PWM', fg='green').place(x=550, y=0)
-tk.Label(Frame12, textvariable=tk_motorLeftPWMCurr).place(x=550, y=15)
-tk.Label(Frame12, textvariable=tk_motorRightPWMCurr).place(x=550, y=35)
-
-# 'Mow Motor
-tk.Label(tabPlotMowMotor, text="Mower Millis : ").place(x=300, y=0)
-tk.Label(tabPlotMowMotor, textvariable=tk_millis).place(x=400, y=0)
-Frame13 = tk.Frame(tabPlotMowMotor, relief=tk.GROOVE, borderwidth="3")
-Frame13.place(x=10, y=20, height=80, width=680)
-BtnMowPlotStartRec = tk.Button(Frame13, command=BtnMowPlotStartRec_click, text="Start")
-BtnMowPlotStartRec.place(x=0, y=0, height=25, width=60)
-BtnMowPlotStopRec = tk.Button(Frame13, command=BtnMowPlotStopRec_click, text="Stop")
-BtnMowPlotStopRec.place(x=0, y=25, height=25, width=60)
-SldMainMowRefresh = tk.Scale(Frame13, from_=1, to=10, label='Refresh Rate per second', relief=tk.SOLID,
-                             orient='horizontal')
-SldMainMowRefresh.place(x=70, y=0, width=250, height=50)
-
-tk.Label(Frame13, text='Power', fg='green').place(x=400, y=0)
-tk.Label(Frame13, textvariable=tk_motorMowPower).place(x=400, y=15)
-tk.Label(Frame13, text='PWM', fg='green').place(x=550, y=0)
-tk.Label(Frame13, textvariable=tk_motorMowPWMCurr).place(x=550, y=15)
-
-# 'Battery'
-tk.Label(tabPlotBattery, text="Mower Millis : ").place(x=300, y=0)
-tk.Label(tabPlotBattery, textvariable=tk_millis).place(x=400, y=0)
-Frame14 = tk.Frame(tabPlotBattery, relief=tk.GROOVE, borderwidth="3")
-Frame14.place(x=10, y=20, height=80, width=680)
-BtnBatPlotStartRec = tk.Button(Frame14, command=BtnBatPlotStartRec_click, text="Start")
-BtnBatPlotStartRec.place(x=0, y=0, height=25, width=60)
-BtnBatPlotStopRec = tk.Button(Frame14, command=BtnBatPlotStopRec_click, text="Stop")
-BtnBatPlotStopRec.place(x=0, y=25, height=25, width=60)
-SldMainBatRefresh = tk.Scale(Frame14, from_=1, to=100, label='Refresh Rate per minute', relief=tk.SOLID,
-                             orient='horizontal')
-SldMainBatRefresh.place(x=70, y=0, width=250, height=50)
-
-tk.Label(Frame14, text='Charge', fg='green').place(x=350, y=15)
-tk.Label(Frame14, text='Battery', fg='green').place(x=350, y=35)
-tk.Label(Frame14, text='Sense', fg='green').place(x=400, y=0)
-tk.Label(Frame14, textvariable=tk_chgSense).place(x=400, y=15)
-tk.Label(Frame14, text='Voltage', fg='green').place(x=550, y=0)
-tk.Label(Frame14, textvariable=tk_chgVoltage).place(x=550, y=15)
-tk.Label(Frame14, textvariable=tk_batteryVoltage).place(x=550, y=35)
-
-# 'Perimeter'
-tk.Label(tabPlotPerimeter, text="Mower Millis : ").place(x=300, y=0)
-tk.Label(tabPlotPerimeter, textvariable=tk_millis).place(x=400, y=0)
-Frame15 = tk.Frame(tabPlotPerimeter, relief=tk.GROOVE, borderwidth="3")
-Frame15.place(x=10, y=20, height=80, width=680)
-BtnPeriPlotStartRec = tk.Button(Frame15, command=BtnPeriPlotStartRec_click, text="Start")
-BtnPeriPlotStartRec.place(x=0, y=0, height=25, width=60)
-BtnPeriPlotStopRec = tk.Button(Frame15, command=BtnPeriPlotStopRec_click, text="Stop")
-BtnPeriPlotStopRec.place(x=0, y=25, height=25, width=60)
-SldMainPeriRefresh = tk.Scale(Frame15, from_=1, to=10, label='Refresh Rate per second', relief=tk.SOLID,
-                              orient='horizontal')
-SldMainPeriRefresh.place(x=70, y=0, width=250, height=50)
-
-tk.Label(Frame15, text='Mag', fg='green').place(x=400, y=0)
-tk.Label(Frame15, text='Left', fg='green').place(x=350, y=15)
-tk.Label(Frame15, textvariable=tk_perimeterMag).place(x=400, y=15)
-tk.Label(Frame15, text='Right', fg='green').place(x=350, y=35)
-tk.Label(Frame15, textvariable=tk_perimeterMagRight).place(x=400, y=35)
-
-# 'Imu'
-tk.Label(tabPlotImu, text="Mower Millis : ").place(x=0, y=200)
-tk.Label(tabPlotImu, textvariable=tk_millis).place(x=100, y=200)
-Frame16 = tk.Frame(tabPlotImu, relief=tk.GROOVE, borderwidth="3")
-Frame16.place(x=5, y=5, height=155, width=390)
-BtnImuPlotStartRec = tk.Button(Frame16, command=BtnImuPlotStartRec_click, text="Start")
-BtnImuPlotStartRec.place(x=0, y=0, height=25, width=60)
-BtnImuPlotStopRec = tk.Button(Frame16, command=BtnImuPlotStopRec_click, text="Stop")
+toolbarLiveMap = VerticalNavigationToolbar2Tk(canvasLiveMap, AutoPage)
+toolbarLiveMap.children['!button2'].pack_forget()
+toolbarLiveMap.children['!button3'].pack_forget()
 BtnImuPlotStopRec.place(x=0, y=25, height=25, width=60)
 SldMainImuRefresh = tk.Scale(Frame16, from_=1, to=10, label='Refresh Rate per seconde', relief=tk.SOLID,
                              orient='horizontal')

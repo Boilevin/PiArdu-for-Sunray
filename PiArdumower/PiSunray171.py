@@ -12,6 +12,23 @@ import time
 import datetime as dt
 
 
+import socket
+import serial
+import threading
+
+
+# Paramètres du LC29HEA
+LC29HEA_PORT = 'COM3'  # adapte selon ton port série
+
+LC29HEA_BAUD = 460800
+
+# Paramètres du flux RTCM
+RTCM_IP = '10.0.0.185'
+RTCM_UDP_PORT = 5000
+
+
+
+
 #from backend.map import map
 #import networkx as nx
 
@@ -126,6 +143,44 @@ from robot import *
 
 if myOS == "Linux":
     sys.path.insert(0, "/home/pi/Documents/PiArdumower")  # add to avoid KST plot error on path
+    LC29HEA_PORT = '/dev/ttyAMA1'  # adapte selon ton port série sur le Pi (ex: /dev/ttyUSB0)
+
+
+
+
+# --- CONFIGURATION LC29HEA reading wifi to find rtcm data and send them to lc29hea---
+
+def rtcm_udp_to_lc29hea():
+    global rtcm_thread_running
+    try:
+        ser = serial.Serial(LC29HEA_PORT, LC29HEA_BAUD, timeout=1)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(('', RTCM_UDP_PORT))
+        print(f"En écoute UDP sur le port {RTCM_UDP_PORT}")
+
+        def read_lc29hea():
+            while rtcm_thread_running:
+                line = ser.readline()
+                if line:
+                    try:
+                        txt = line.decode(errors='ignore')
+                        print("LC29HEA:", txt.strip())
+                        try:
+                            txtConsoleRecu.insert('1.0', txt)
+                        except:
+                            pass
+                    except Exception as e:
+                        print("Erreur décodage NMEA:", e)
+        threading.Thread(target=read_lc29hea, daemon=True).start()
+
+        while rtcm_thread_running:
+            data, addr = sock.recvfrom(1024)
+            ser.write(data)
+    except Exception as e:
+        print("Erreur RTCM/LC29HEA:", e)
+    finally:
+        rtcm_thread_running = False
+
 
 
 def ButtonFlashDue_click():
@@ -2920,9 +2975,6 @@ ButtonBackHome = tk.Button(ManualPage, image=imgBack, command=ButtonBackToMain_c
 ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 
-
-
-
 """**************************THE CONSOLE PAGE  **********************************************"""
 
 
@@ -2975,15 +3027,8 @@ def ButtonTesting_click():
 
 
 
-def ButtonClearConsole_click():
-    txtRecu.delete('1.0', tk.END)
-    txtSend.delete('1.0', tk.END)
-    txtConsoleRecu.delete('1.0', tk.END)
-
-
 ConsolePage = tk.Frame(fen1)
 ConsolePage.place(x=0, y=0, height=400, width=800)
-
 
 # ...existing code...
 
@@ -3008,20 +3053,15 @@ def stop_rtcm_thread():
     else:
         consoleInsertText("RTCM/LC29HEA : Déjà arrêté\n")
 
-ButtonStartRtcm = tk.Button(ConsolePage, text="Start RTCM/LC29HEA", command=start_rtcm_thread, bg="lightgreen")
-ButtonStartRtcm.place(x=10, y=370, height=30, width=180)
 
-ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=stop_rtcm_thread, bg="tomato")
-ButtonStopRtcm.place(x=210, y=370, height=30, width=180)
 
 # ...existing code...
 
 
-
-
-
-
-
+def ButtonClearConsole_click():
+    txtRecu.delete('1.0', tk.END)
+    txtSend.delete('1.0', tk.END)
+    txtConsoleRecu.delete('1.0', tk.END)
 
 
 txtRecu = tk.Text(ConsolePage)
@@ -3056,6 +3096,13 @@ ButtonClearConsole.configure(command=ButtonClearConsole_click, text="Clear Conso
 ButtonSaveReceived = tk.Button(ConsolePage)
 ButtonSaveReceived.place(x=660, y=120, height=35, width=120)
 ButtonSaveReceived.configure(command=ButtonSaveReceived_click, text="Save To File")
+
+
+ButtonStartRtcm = tk.Button(ConsolePage, text="Start RTCM/LC29HEA", command=start_rtcm_thread, bg="lightgreen")
+ButtonStartRtcm.place(x=10, y=370, height=30, width=180)
+
+ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=stop_rtcm_thread, bg="tomato")
+ButtonStopRtcm.place(x=210, y=370, height=30, width=180)
 
 ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=660, y=160, height=120, width=120)
