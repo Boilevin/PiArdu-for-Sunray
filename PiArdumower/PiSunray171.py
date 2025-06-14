@@ -12,19 +12,9 @@ import time
 import datetime as dt
 
 
-import socket
+
 import serial
-import threading
 
-
-# Paramètres du LC29HEA
-LC29HEA_PORT = 'COM3'  # adapte selon ton port série
-
-LC29HEA_BAUD = 460800
-
-# Paramètres du flux RTCM
-RTCM_IP = '10.0.0.185'
-RTCM_UDP_PORT = 5000
 
 
 
@@ -113,7 +103,14 @@ if myOS == "Linux":
 # if(useVision):
 from PIL import Image, ImageTk
 
-import threading
+
+
+LC29HEA_PORT = 'COM3'         # ou '/dev/ttyAMA1' sur Raspberry Pi
+LC29HEA_BAUD = 460800
+RTCM_UDP_PORT = 5000
+from gnss_manager import GNSSManager
+gnss = GNSSManager(port=LC29HEA_PORT, baud=LC29HEA_BAUD, udp_port=RTCM_UDP_PORT)
+
 
 
 # matplotlib navigation vertical bar
@@ -143,43 +140,8 @@ from robot import *
 
 if myOS == "Linux":
     sys.path.insert(0, "/home/pi/Documents/PiArdumower")  # add to avoid KST plot error on path
-    LC29HEA_PORT = '/dev/ttyAMA1'  # adapte selon ton port série sur le Pi (ex: /dev/ttyUSB0)
+   
 
-
-
-
-# --- CONFIGURATION LC29HEA reading wifi to find rtcm data and send them to lc29hea---
-
-def rtcm_udp_to_lc29hea():
-    global rtcm_thread_running
-    try:
-        ser = serial.Serial(LC29HEA_PORT, LC29HEA_BAUD, timeout=1)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(('', RTCM_UDP_PORT))
-        print(f"En écoute UDP sur le port {RTCM_UDP_PORT}")
-
-        def read_lc29hea():
-            while rtcm_thread_running:
-                line = ser.readline()
-                if line:
-                    try:
-                        txt = line.decode(errors='ignore')
-                        print("LC29HEA:", txt.strip())
-                        try:
-                            txtConsoleRecu.insert('1.0', txt)
-                        except:
-                            pass
-                    except Exception as e:
-                        print("Erreur décodage NMEA:", e)
-        threading.Thread(target=read_lc29hea, daemon=True).start()
-
-        while rtcm_thread_running:
-            data, addr = sock.recvfrom(1024)
-            ser.write(data)
-    except Exception as e:
-        print("Erreur RTCM/LC29HEA:", e)
-    finally:
-        rtcm_thread_running = False
 
 
 
@@ -2979,6 +2941,12 @@ ButtonBackHome.place(x=680, y=280, height=120, width=120)
 
 
 
+ConsolePage = tk.Frame(fen1)
+ConsolePage.place(x=0, y=0, height=400, width=800)
+
+
+
+
 def ButtonTesting_click():
     fileName = cwd + "/House" + "{0:0>2}".format(mymower.House) + \
                "/maps02" + "/DOCK.npy"
@@ -3027,35 +2995,6 @@ def ButtonTesting_click():
 
 
 
-ConsolePage = tk.Frame(fen1)
-ConsolePage.place(x=0, y=0, height=400, width=800)
-
-# ...existing code...
-
-rtcm_thread = None
-rtcm_thread_running = False
-
-def start_rtcm_thread():
-    global rtcm_thread, rtcm_thread_running
-    if not rtcm_thread_running:
-        rtcm_thread_running = True
-        rtcm_thread = threading.Thread(target=rtcm_udp_to_lc29hea, daemon=True)
-        rtcm_thread.start()
-        consoleInsertText("RTCM/LC29HEA : Démarrage du flux\n")
-    else:
-        consoleInsertText("RTCM/LC29HEA : Déjà en cours\n")
-
-def stop_rtcm_thread():
-    global rtcm_thread_running
-    if rtcm_thread_running:
-        rtcm_thread_running = False
-        consoleInsertText("RTCM/LC29HEA : Arrêt demandé\n")
-    else:
-        consoleInsertText("RTCM/LC29HEA : Déjà arrêté\n")
-
-
-
-# ...existing code...
 
 
 def ButtonClearConsole_click():
@@ -3097,12 +3036,17 @@ ButtonSaveReceived = tk.Button(ConsolePage)
 ButtonSaveReceived.place(x=660, y=120, height=35, width=120)
 ButtonSaveReceived.configure(command=ButtonSaveReceived_click, text="Save To File")
 
+# Pour envoyer la séquence de config GNSS :
 
-ButtonStartRtcm = tk.Button(ConsolePage, text="Start RTCM/LC29HEA", command=start_rtcm_thread, bg="lightgreen")
+ButtonStartRtcm = tk.Button(ConsolePage, text="Start RTCM/LC29HEA", command=lambda: gnss.start_rtcm_thread(consoleInsertText, txtConsoleRecu), bg="lightgreen")
 ButtonStartRtcm.place(x=10, y=370, height=30, width=180)
 
-ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=stop_rtcm_thread, bg="tomato")
+ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=lambda: gnss.stop_rtcm_thread(consoleInsertText), bg="tomato")
 ButtonStopRtcm.place(x=210, y=370, height=30, width=180)
+
+ButtonSendGnssCfg = tk.Button(ConsolePage, text="Config GNSS UBX Only", command=lambda: gnss.send_gnss_config_sequence(consoleInsertText), bg="orange")
+ButtonSendGnssCfg.place(x=420, y=370, height=30, width=180)
+
 
 ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_click)
 ButtonBackHome.place(x=660, y=160, height=120, width=120)
