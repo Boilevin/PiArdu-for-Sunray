@@ -105,13 +105,6 @@ from PIL import Image, ImageTk
 
 
 
-LC29HEA_PORT = 'COM3'         # ou '/dev/ttyAMA1' sur Raspberry Pi
-LC29HEA_BAUD = 460800
-RTCM_UDP_PORT = 5000
-from gnss_manager import GNSSManager
-gnss = GNSSManager(port=LC29HEA_PORT, baud=LC29HEA_BAUD, udp_port=RTCM_UDP_PORT)
-
-
 
 # matplotlib navigation vertical bar
 class VerticalNavigationToolbar2Tk(NavigationToolbar2Tk):
@@ -2945,6 +2938,11 @@ ConsolePage = tk.Frame(fen1)
 ConsolePage.place(x=0, y=0, height=400, width=800)
 
 
+LC29HEA_PORT = 'COM3'         # ou '/dev/ttyAMA1' sur Raspberry Pi
+LC29HEA_BAUD = 460800
+RTCM_UDP_PORT = 5000
+from gnss_manager import GNSSManager
+
 
 
 def ButtonTesting_click():
@@ -2993,8 +2991,11 @@ def ButtonTesting_click():
     print("fini")
 
 
-
-
+def show_send_gnss_cfg_button(show=True):
+    if show:
+        ButtonSendGnssCfg.place(x=410, y=370, width=180, height=30)
+    else:
+        ButtonSendGnssCfg.place_forget()
 
 
 def ButtonClearConsole_click():
@@ -3045,7 +3046,11 @@ ButtonStopRtcm = tk.Button(ConsolePage, text="Stop RTCM/LC29HEA", command=lambda
 ButtonStopRtcm.place(x=210, y=370, height=30, width=180)
 
 ButtonSendGnssCfg = tk.Button(ConsolePage, text="Config GNSS UBX Only", command=lambda: gnss.send_gnss_config_sequence(consoleInsertText), bg="orange")
-ButtonSendGnssCfg.place(x=420, y=370, height=30, width=180)
+#ButtonSendGnssCfg.place(x=420, y=370, height=30, width=180)
+
+gnss = GNSSManager(port=LC29HEA_PORT, baud=LC29HEA_BAUD, udp_port=RTCM_UDP_PORT)
+gnss.set_button_callback(show_send_gnss_cfg_button)
+
 
 
 ButtonBackHome = tk.Button(ConsolePage, image=imgBack, command=ButtonBackToMain_click)
