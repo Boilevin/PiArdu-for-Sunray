@@ -17,6 +17,7 @@ class GNSSManager:
         self.ser = None
         self.button_callback = None
         self.sock = None
+        self.nmea_callback = None
         
     def set_button_callback(self, callback):
             self.button_callback = callback
@@ -93,14 +94,19 @@ class GNSSManager:
                     if line:
                         try:
                             txt = line.decode(errors='ignore')
-                            #if consoleInsertText:
-                               
+                            #if consoleInsertText:       
                                # consoleInsertText(f"LC29HEA: {txt.strip()}\n")
                             if txtConsoleRecu:
                                 try:
                                     txtConsoleRecu.insert('1.0', txt)
                                 except:
                                     pass
+                            if self.nmea_callback:
+                                try:
+                                    self.nmea_callback(txt)
+                                except Exception as e:
+                                    if consoleInsertText:
+                                        consoleInsertText(f"Erreur dans le callback NMEA: {e}\n")
                         except Exception as e:
                             if consoleInsertText:
                                 consoleInsertText(f"Erreur décodage NMEA: {e}\n")
@@ -153,3 +159,6 @@ class GNSSManager:
 
         if self.button_callback:
             self.button_callback(False)  # Masque le bouton
+
+    def set_nmea_callback(self, callback):
+        self.nmea_callback = callback

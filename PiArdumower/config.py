@@ -80,7 +80,7 @@ if (os.name=='posix'):
 
 if (os.name=='nt'):
     print('Windows Platform')
-    myComPort = 'COM8'
+    myComPort = 'COM4'
     myFrameWidth = 800
     myFrameHeight = 430
     myBaudRate = 115200
