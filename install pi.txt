@@ -13,9 +13,6 @@ sudo pip3 install mpl_interactions
 
 How to Install teensy loader inside raspberry pi.
 
-copy the file: 
-00-teensy.rules et teensy_raspberrypi.tar.gz
-from piardumower folder to Home/pi/Documents/
 
 Inside terminal use these command to unpack the 3 files and set the rules
 
@@ -23,7 +20,13 @@ cd Documents/PiArdumower
 sudo cp 00-teensy.rules /etc/udev/rules.d/
 tar -xvzf teensy_raspberrypi.tar.gz
 
-Now to launch the loader:
 
-./teensy &
+Autostart of piardu
+create a crontab using
+crontab e
+at the end of flie ,add the 2 lines
+DISPLAY=:0
+@reboot sleep 30 && /home/pi/Documents/PiArdumower/./mower.sh >>>
 
+sometime need dos2unix on mower.sh
+dos2unix mower.sh
