@@ -2,10 +2,28 @@ PI5 tested
 
 From fresh install of Trixye
 sudo rm /usr/lib/python3.13/EXTERNALLY-MANAGED
+
 git clone https://github.com/Boilevin/PiArdu-for-Sunray.git
 sudo apt-get install idle
 sudo apt-get install python3-pil.imagetk
 sudo pip3 install shapely
 sudo pip3 install opencv-python
 sudo pip3 install mpl_interactions
+
+
+How to Install teensy loader inside raspberry pi.
+
+copy the file: 
+00-teensy.rules et teensy_raspberrypi.tar.gz
+from piardumower folder to Home/pi/Documents/
+
+Inside terminal use these command to unpack the 3 files and set the rules
+
+cd Documents/PiArdumower
+sudo cp 00-teensy.rules /etc/udev/rules.d/
+tar -xvzf teensy_raspberrypi.tar.gz
+
+Now to launch the loader:
+
+./teensy &
 
