@@ -35,7 +35,7 @@ if (os.name=='posix'):
     Sender3AdressIP="0.0.0.0"
     
     #if camera is rotate in the chassis
-    cameraConnected=True
+    cameraConnected=False
     myCamAngle = 0 # Possible value = 0, 90, 180, 270
     streamVideoOnPower = False #auto start of the streaming
 
@@ -52,7 +52,7 @@ if (os.name=='posix'):
     Mqtt_MowerName = "Denna"
 
  #Setting for Vision
-    useVision=True
+    useVision=False
     visionDetectMinScore = 0.60
     vision_framerate = 5
 
